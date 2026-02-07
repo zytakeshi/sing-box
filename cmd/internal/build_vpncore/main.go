@@ -96,7 +96,7 @@ func buildAndroid() {
 		"-v",
 		"-target", bindTarget,
 		"-androidapi", "21",
-		"-javapkg=com.novamindllc.vpncore",
+		"-javapkg=com.novamindllc",
 		"-libname=box",
 	}
 	if !debugEnabled {
@@ -174,10 +174,10 @@ func buildApple() {
 
 	copyPath := filepath.Join("..", "vpncheap-for-apple")
 	if rw.IsDir(copyPath) {
-		targetDir := filepath.Join(copyPath, "Libbox.xcframework")
+		targetDir := filepath.Join(copyPath, "Vpncore.xcframework")
 		targetDir, _ = filepath.Abs(targetDir)
 		os.RemoveAll(targetDir)
-		os.Rename("Libbox.xcframework", targetDir)
+		os.Rename("Vpncore.xcframework", targetDir)
 		log.Info("copied to ", targetDir)
 	}
 }
