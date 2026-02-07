@@ -2,7 +2,7 @@
 
 package main
 
-import "github.com/sagernet/sing-box/log"
+import "github.com/zytakeshi/vpncheap-core/log"
 
 func main() {
 	err := generateCompletions()
@@ -12,15 +12,15 @@ func main() {
 }
 
 func generateCompletions() error {
-	err := mainCommand.GenBashCompletionFile("release/completions/sing-box.bash")
+	err := mainCommand.GenBashCompletionFile("release/completions/vpncheap.bash")
 	if err != nil {
 		return err
 	}
-	err = mainCommand.GenFishCompletionFile("release/completions/sing-box.fish", true)
+	err = mainCommand.GenFishCompletionFile("release/completions/vpncheap.fish", true)
 	if err != nil {
 		return err
 	}
-	err = mainCommand.GenZshCompletionFile("release/completions/sing-box.zsh")
+	err = mainCommand.GenZshCompletionFile("release/completions/vpncheap.zsh")
 	if err != nil {
 		return err
 	}

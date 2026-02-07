@@ -5,8 +5,8 @@ package tls
 import (
 	"context"
 
-	"github.com/sagernet/sing-box/log"
-	"github.com/sagernet/sing-box/option"
+	"github.com/zytakeshi/vpncheap-core/log"
+	"github.com/zytakeshi/vpncheap-core/option"
 	E "github.com/sagernet/sing/common/exceptions"
 )
 

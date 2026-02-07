@@ -10,13 +10,13 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sagernet/sing-box/adapter"
-	"github.com/sagernet/sing-box/common/conntrack"
-	"github.com/sagernet/sing-box/common/process"
-	"github.com/sagernet/sing-box/common/sniff"
-	C "github.com/sagernet/sing-box/constant"
-	"github.com/sagernet/sing-box/option"
-	R "github.com/sagernet/sing-box/route/rule"
+	"github.com/zytakeshi/vpncheap-core/adapter"
+	"github.com/zytakeshi/vpncheap-core/common/conntrack"
+	"github.com/zytakeshi/vpncheap-core/common/process"
+	"github.com/zytakeshi/vpncheap-core/common/sniff"
+	C "github.com/zytakeshi/vpncheap-core/constant"
+	"github.com/zytakeshi/vpncheap-core/option"
+	R "github.com/zytakeshi/vpncheap-core/route/rule"
 	"github.com/sagernet/sing-dns"
 	"github.com/sagernet/sing-mux"
 	"github.com/sagernet/sing-vmess"
@@ -83,13 +83,13 @@ func (r *Router) routeConnection(ctx context.Context, conn net.Conn, metadata ad
 	metadata.Network = N.NetworkTCP
 	switch metadata.Destination.Fqdn {
 	case mux.Destination.Fqdn:
-		return E.New("global multiplex is deprecated since sing-box v1.7.0, enable multiplex in Inbound fields instead.")
+		return E.New("global multiplex is deprecated since v1.7.0, enable multiplex in Inbound fields instead.")
 	case vmess.MuxDestination.Fqdn:
-		return E.New("global multiplex (v2ray legacy) not supported since sing-box v1.7.0.")
+		return E.New("global multiplex (v2ray legacy) not supported since v1.7.0.")
 	case uot.MagicAddress:
-		return E.New("global UoT not supported since sing-box v1.7.0.")
+		return E.New("global UoT not supported since v1.7.0.")
 	case uot.LegacyMagicAddress:
-		return E.New("global UoT (legacy) not supported since sing-box v1.7.0.")
+		return E.New("global UoT (legacy) not supported since v1.7.0.")
 	}
 	if deadline.NeedAdditionalReadDeadline(conn) {
 		conn = deadline.NewConn(conn)

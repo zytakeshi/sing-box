@@ -6,7 +6,7 @@ import (
 	"encoding/binary"
 	"time"
 
-	"github.com/sagernet/sing-box/common/urltest"
+	"github.com/zytakeshi/vpncheap-core/common/urltest"
 	"github.com/sagernet/sing-dns"
 	"github.com/sagernet/sing/common/varbin"
 )

@@ -4,8 +4,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/sagernet/sing-box/common/tls"
-	"github.com/sagernet/sing-box/log"
+	"github.com/zytakeshi/vpncheap-core/common/tls"
+	"github.com/zytakeshi/vpncheap-core/log"
 
 	"github.com/spf13/cobra"
 )

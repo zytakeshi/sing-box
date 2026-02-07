@@ -3,7 +3,7 @@ package option
 import (
 	"context"
 
-	"github.com/sagernet/sing-box/experimental/deprecated"
+	"github.com/zytakeshi/vpncheap-core/experimental/deprecated"
 	"github.com/sagernet/sing/common/json"
 )
 

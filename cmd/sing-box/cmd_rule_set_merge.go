@@ -8,8 +8,8 @@ import (
 	"sort"
 	"strings"
 
-	"github.com/sagernet/sing-box/log"
-	"github.com/sagernet/sing-box/option"
+	"github.com/zytakeshi/vpncheap-core/log"
+	"github.com/zytakeshi/vpncheap-core/option"
 	E "github.com/sagernet/sing/common/exceptions"
 	"github.com/sagernet/sing/common/json"
 	"github.com/sagernet/sing/common/json/badjson"

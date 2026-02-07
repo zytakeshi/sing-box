@@ -9,9 +9,9 @@ import (
 	"time"
 
 	"github.com/sagernet/fswatch"
-	"github.com/sagernet/sing-box/adapter"
-	"github.com/sagernet/sing-box/log"
-	"github.com/sagernet/sing-box/option"
+	"github.com/zytakeshi/vpncheap-core/adapter"
+	"github.com/zytakeshi/vpncheap-core/log"
+	"github.com/zytakeshi/vpncheap-core/option"
 	"github.com/sagernet/sing/common"
 	E "github.com/sagernet/sing/common/exceptions"
 	"github.com/sagernet/sing/common/ntp"

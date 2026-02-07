@@ -9,8 +9,8 @@ import (
 	"time"
 
 	"github.com/sagernet/asc-go/asc"
-	"github.com/sagernet/sing-box/cmd/internal/build_shared"
-	"github.com/sagernet/sing-box/log"
+	"github.com/zytakeshi/vpncheap-core/cmd/internal/build_shared"
+	"github.com/zytakeshi/vpncheap-core/log"
 	"github.com/sagernet/sing/common"
 	E "github.com/sagernet/sing/common/exceptions"
 	F "github.com/sagernet/sing/common/format"
@@ -169,7 +169,7 @@ func publishTestflight(ctx context.Context) error {
 			if localization.Attributes == nil || localization.Attributes.WhatsNew == nil || *localization.Attributes.WhatsNew == "" {
 				log.Info(string(platform), " ", tag, " update localization")
 				_, _, err = client.TestFlight.UpdateBetaBuildLocalization(ctx, localization.ID, common.Ptr(
-					F.ToString("sing-box ", tagVersion.String()),
+					F.ToString("vpncheap ", tagVersion.String()),
 				))
 				if err != nil {
 					return err
@@ -367,8 +367,8 @@ func prepareAppStore(ctx context.Context) error {
 		if localization.Attributes == nil || localization.Attributes.WhatsNew == nil || *localization.Attributes.WhatsNew == "" {
 			log.Info(string(platform), " ", tag, " update localization")
 			_, _, err = client.Apps.UpdateAppStoreVersionLocalization(ctx, localization.ID, &asc.AppStoreVersionLocalizationUpdateRequestAttributes{
-				PromotionalText: common.Ptr("Yet another distribution for sing-box, the universal proxy platform."),
-				WhatsNew:        common.Ptr(F.ToString("sing-box ", tag, ": Fixes and improvements.")),
+				PromotionalText: common.Ptr("A fast and secure VPN client."),
+				WhatsNew:        common.Ptr(F.ToString("vpncheap ", tag, ": Fixes and improvements.")),
 			})
 			if err != nil {
 				return err

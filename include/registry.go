@@ -3,30 +3,30 @@ package include
 import (
 	"context"
 
-	"github.com/sagernet/sing-box/adapter"
-	"github.com/sagernet/sing-box/adapter/endpoint"
-	"github.com/sagernet/sing-box/adapter/inbound"
-	"github.com/sagernet/sing-box/adapter/outbound"
-	C "github.com/sagernet/sing-box/constant"
-	"github.com/sagernet/sing-box/log"
-	"github.com/sagernet/sing-box/option"
-	"github.com/sagernet/sing-box/protocol/block"
-	"github.com/sagernet/sing-box/protocol/direct"
-	"github.com/sagernet/sing-box/protocol/dns"
-	"github.com/sagernet/sing-box/protocol/group"
-	"github.com/sagernet/sing-box/protocol/http"
-	"github.com/sagernet/sing-box/protocol/mixed"
-	"github.com/sagernet/sing-box/protocol/naive"
-	"github.com/sagernet/sing-box/protocol/redirect"
-	"github.com/sagernet/sing-box/protocol/shadowsocks"
-	"github.com/sagernet/sing-box/protocol/shadowtls"
-	"github.com/sagernet/sing-box/protocol/socks"
-	"github.com/sagernet/sing-box/protocol/ssh"
-	"github.com/sagernet/sing-box/protocol/tor"
-	"github.com/sagernet/sing-box/protocol/trojan"
-	"github.com/sagernet/sing-box/protocol/tun"
-	"github.com/sagernet/sing-box/protocol/vless"
-	"github.com/sagernet/sing-box/protocol/vmess"
+	"github.com/zytakeshi/vpncheap-core/adapter"
+	"github.com/zytakeshi/vpncheap-core/adapter/endpoint"
+	"github.com/zytakeshi/vpncheap-core/adapter/inbound"
+	"github.com/zytakeshi/vpncheap-core/adapter/outbound"
+	C "github.com/zytakeshi/vpncheap-core/constant"
+	"github.com/zytakeshi/vpncheap-core/log"
+	"github.com/zytakeshi/vpncheap-core/option"
+	"github.com/zytakeshi/vpncheap-core/protocol/block"
+	"github.com/zytakeshi/vpncheap-core/protocol/direct"
+	"github.com/zytakeshi/vpncheap-core/protocol/dns"
+	"github.com/zytakeshi/vpncheap-core/protocol/group"
+	"github.com/zytakeshi/vpncheap-core/protocol/http"
+	"github.com/zytakeshi/vpncheap-core/protocol/mixed"
+	"github.com/zytakeshi/vpncheap-core/protocol/naive"
+	"github.com/zytakeshi/vpncheap-core/protocol/redirect"
+	"github.com/zytakeshi/vpncheap-core/protocol/shadowsocks"
+	"github.com/zytakeshi/vpncheap-core/protocol/shadowtls"
+	"github.com/zytakeshi/vpncheap-core/protocol/socks"
+	"github.com/zytakeshi/vpncheap-core/protocol/ssh"
+	"github.com/zytakeshi/vpncheap-core/protocol/tor"
+	"github.com/zytakeshi/vpncheap-core/protocol/trojan"
+	"github.com/zytakeshi/vpncheap-core/protocol/tun"
+	"github.com/zytakeshi/vpncheap-core/protocol/vless"
+	"github.com/zytakeshi/vpncheap-core/protocol/vmess"
 	E "github.com/sagernet/sing/common/exceptions"
 )
 
@@ -93,12 +93,12 @@ func EndpointRegistry() *endpoint.Registry {
 
 func registerStubForRemovedInbounds(registry *inbound.Registry) {
 	inbound.Register[option.ShadowsocksInboundOptions](registry, C.TypeShadowsocksR, func(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, options option.ShadowsocksInboundOptions) (adapter.Inbound, error) {
-		return nil, E.New("ShadowsocksR is deprecated and removed in sing-box 1.6.0")
+		return nil, E.New("ShadowsocksR is deprecated and removed in v1.6.0")
 	})
 }
 
 func registerStubForRemovedOutbounds(registry *outbound.Registry) {
 	outbound.Register[option.ShadowsocksROutboundOptions](registry, C.TypeShadowsocksR, func(ctx context.Context, router adapter.Router, logger log.ContextLogger, tag string, options option.ShadowsocksROutboundOptions) (adapter.Outbound, error) {
-		return nil, E.New("ShadowsocksR is deprecated and removed in sing-box 1.6.0")
+		return nil, E.New("ShadowsocksR is deprecated and removed in v1.6.0")
 	})
 }

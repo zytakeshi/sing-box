@@ -5,7 +5,7 @@ import (
 	"path/filepath"
 	"reflect"
 
-	C "github.com/sagernet/sing-box/constant"
+	C "github.com/zytakeshi/vpncheap-core/constant"
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/domain"
 	E "github.com/sagernet/sing/common/exceptions"

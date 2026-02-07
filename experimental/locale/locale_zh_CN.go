@@ -5,7 +5,7 @@ var warningMessageForEndUsers = "\n\n如果您不明白此消息意味着什么�
 func init() {
 	localeRegistry["zh_CN"] = &Locale{
 		Locale:                  "zh_CN",
-		DeprecatedMessage:       "%s 已在 sing-box %s 中被弃用，且将在 sing-box %s 中被移除，请参阅迁移指南。" + warningMessageForEndUsers,
-		DeprecatedMessageNoLink: "%s 已在 sing-box %s 中被弃用，且将在 sing-box %s 中被移除。" + warningMessageForEndUsers,
+		DeprecatedMessage:       "%s 已在 %s 版本中被弃用，且将在 %s 版本中被移除，请参阅迁移指南。" + warningMessageForEndUsers,
+		DeprecatedMessageNoLink: "%s 已在 %s 版本中被弃用，且将在 %s 版本中被移除。" + warningMessageForEndUsers,
 	}
 }

@@ -8,7 +8,7 @@ import (
 	"encoding/base64"
 	"os"
 
-	"github.com/sagernet/sing-box/log"
+	"github.com/zytakeshi/vpncheap-core/log"
 
 	"github.com/spf13/cobra"
 )

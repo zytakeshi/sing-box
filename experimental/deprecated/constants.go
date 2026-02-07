@@ -3,9 +3,9 @@ package deprecated
 import (
 	"fmt"
 
-	"github.com/sagernet/sing-box/common/badversion"
-	C "github.com/sagernet/sing-box/constant"
-	"github.com/sagernet/sing-box/experimental/locale"
+	"github.com/zytakeshi/vpncheap-core/common/badversion"
+	C "github.com/zytakeshi/vpncheap-core/constant"
+	"github.com/zytakeshi/vpncheap-core/experimental/locale"
 	F "github.com/sagernet/sing/common/format"
 
 	"golang.org/x/mod/semver"
@@ -46,13 +46,13 @@ func (n Note) Message() string {
 func (n Note) MessageWithLink() string {
 	if n.MigrationLink != "" {
 		return F.ToString(
-			n.Description, " is deprecated in sing-box ", n.DeprecatedVersion,
-			" and will be removed in sing-box ", n.ScheduledVersion, ", checkout documentation for migration: ", n.MigrationLink,
+			n.Description, " is deprecated in version ", n.DeprecatedVersion,
+			" and will be removed in ", n.ScheduledVersion, ", checkout documentation for migration: ", n.MigrationLink,
 		)
 	} else {
 		return F.ToString(
-			n.Description, " is deprecated in sing-box ", n.DeprecatedVersion,
-			" and will be removed in sing-box ", n.ScheduledVersion, ".",
+			n.Description, " is deprecated in version ", n.DeprecatedVersion,
+			" and will be removed in ", n.ScheduledVersion, ".",
 		)
 	}
 }
@@ -63,7 +63,7 @@ var OptionBadMatchSource = Note{
 	DeprecatedVersion: "1.10.0",
 	ScheduledVersion:  "1.11.0",
 	EnvName:           "BAD_MATCH_SOURCE",
-	MigrationLink:     "https://sing-box.sagernet.org/deprecated/#match-source-rule-items-are-renamed",
+	MigrationLink:     "https://vpncheap.com/docs/deprecated/#match-source-rule-items-are-renamed",
 }
 
 var OptionGEOIP = Note{
@@ -72,7 +72,7 @@ var OptionGEOIP = Note{
 	DeprecatedVersion: "1.8.0",
 	ScheduledVersion:  "1.12.0",
 	EnvName:           "GEOIP",
-	MigrationLink:     "https://sing-box.sagernet.org/migration/#migrate-geoip-to-rule-sets",
+	MigrationLink:     "https://vpncheap.com/docs/migration/#migrate-geoip-to-rule-sets",
 }
 
 var OptionGEOSITE = Note{
@@ -81,7 +81,7 @@ var OptionGEOSITE = Note{
 	DeprecatedVersion: "1.8.0",
 	ScheduledVersion:  "1.12.0",
 	EnvName:           "GEOSITE",
-	MigrationLink:     "https://sing-box.sagernet.org/migration/#migrate-geosite-to-rule-sets",
+	MigrationLink:     "https://vpncheap.com/docs/migration/#migrate-geosite-to-rule-sets",
 }
 
 var OptionTUNAddressX = Note{
@@ -90,7 +90,7 @@ var OptionTUNAddressX = Note{
 	DeprecatedVersion: "1.10.0",
 	ScheduledVersion:  "1.12.0",
 	EnvName:           "TUN_ADDRESS_X",
-	MigrationLink:     "https://sing-box.sagernet.org/migration/#tun-address-fields-are-merged",
+	MigrationLink:     "https://vpncheap.com/docs/migration/#tun-address-fields-are-merged",
 }
 
 var OptionSpecialOutbounds = Note{
@@ -99,7 +99,7 @@ var OptionSpecialOutbounds = Note{
 	DeprecatedVersion: "1.11.0",
 	ScheduledVersion:  "1.13.0",
 	EnvName:           "SPECIAL_OUTBOUNDS",
-	MigrationLink:     "https://sing-box.sagernet.org/migration/#migrate-legacy-special-outbounds-to-rule-actions",
+	MigrationLink:     "https://vpncheap.com/docs/migration/#migrate-legacy-special-outbounds-to-rule-actions",
 }
 
 var OptionInboundOptions = Note{
@@ -108,7 +108,7 @@ var OptionInboundOptions = Note{
 	DeprecatedVersion: "1.11.0",
 	ScheduledVersion:  "1.13.0",
 	EnvName:           "INBOUND_OPTIONS",
-	MigrationLink:     "https://sing-box.sagernet.org/migration/#migrate-legacy-special-outbounds-to-rule-actions",
+	MigrationLink:     "https://vpncheap.com/docs/migration/#migrate-legacy-special-outbounds-to-rule-actions",
 }
 
 var OptionDestinationOverrideFields = Note{
@@ -117,7 +117,7 @@ var OptionDestinationOverrideFields = Note{
 	DeprecatedVersion: "1.11.0",
 	ScheduledVersion:  "1.13.0",
 	EnvName:           "DESTINATION_OVERRIDE_FIELDS",
-	MigrationLink:     "https://sing-box.sagernet.org/migration/#migrate-destination-override-fields-to-route-options",
+	MigrationLink:     "https://vpncheap.com/docs/migration/#migrate-destination-override-fields-to-route-options",
 }
 
 var OptionWireGuardOutbound = Note{
@@ -126,7 +126,7 @@ var OptionWireGuardOutbound = Note{
 	DeprecatedVersion: "1.11.0",
 	ScheduledVersion:  "1.13.0",
 	EnvName:           "WIREGUARD_OUTBOUND",
-	MigrationLink:     "https://sing-box.sagernet.org/migration/#migrate-wireguard-outbound-to-endpoint",
+	MigrationLink:     "https://vpncheap.com/docs/migration/#migrate-wireguard-outbound-to-endpoint",
 }
 
 var OptionWireGuardGSO = Note{
@@ -135,7 +135,7 @@ var OptionWireGuardGSO = Note{
 	DeprecatedVersion: "1.11.0",
 	ScheduledVersion:  "1.13.0",
 	EnvName:           "WIREGUARD_GSO",
-	MigrationLink:     "https://sing-box.sagernet.org/migration/#migrate-wireguard-outbound-to-endpoint",
+	MigrationLink:     "https://vpncheap.com/docs/migration/#migrate-wireguard-outbound-to-endpoint",
 }
 
 var OptionTUNGSO = Note{

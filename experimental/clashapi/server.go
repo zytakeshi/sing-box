@@ -13,13 +13,13 @@ import (
 	"time"
 
 	"github.com/sagernet/cors"
-	"github.com/sagernet/sing-box/adapter"
-	"github.com/sagernet/sing-box/common/urltest"
-	C "github.com/sagernet/sing-box/constant"
-	"github.com/sagernet/sing-box/experimental"
-	"github.com/sagernet/sing-box/experimental/clashapi/trafficontrol"
-	"github.com/sagernet/sing-box/log"
-	"github.com/sagernet/sing-box/option"
+	"github.com/zytakeshi/vpncheap-core/adapter"
+	"github.com/zytakeshi/vpncheap-core/common/urltest"
+	C "github.com/zytakeshi/vpncheap-core/constant"
+	"github.com/zytakeshi/vpncheap-core/experimental"
+	"github.com/zytakeshi/vpncheap-core/experimental/clashapi/trafficontrol"
+	"github.com/zytakeshi/vpncheap-core/log"
+	"github.com/zytakeshi/vpncheap-core/option"
 	"github.com/sagernet/sing/common"
 	E "github.com/sagernet/sing/common/exceptions"
 	"github.com/sagernet/sing/common/json"
@@ -92,7 +92,7 @@ func NewServer(ctx context.Context, logFactory log.ObservableFactory, options op
 	//goland:noinspection GoDeprecation
 	//nolint:staticcheck
 	if options.StoreMode || options.StoreSelected || options.StoreFakeIP || options.CacheFile != "" || options.CacheID != "" {
-		return nil, E.New("cache_file and related fields in Clash API is deprecated in sing-box 1.8.0, use experimental.cache_file instead.")
+		return nil, E.New("cache_file and related fields in Clash API is deprecated in v1.8.0, use experimental.cache_file instead.")
 	}
 	allowedOrigins := options.AccessControlAllowOrigin
 	if len(allowedOrigins) == 0 {
@@ -421,5 +421,5 @@ func getLogs(logFactory log.ObservableFactory) func(w http.ResponseWriter, r *ht
 }
 
 func version(w http.ResponseWriter, r *http.Request) {
-	render.JSON(w, r, render.M{"version": "sing-box " + C.Version, "premium": true, "meta": true})
+	render.JSON(w, r, render.M{"version": C.Version, "premium": true, "meta": true})
 }

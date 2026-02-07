@@ -3,13 +3,13 @@
 package include
 
 import (
-	"github.com/sagernet/sing-box/adapter/inbound"
-	"github.com/sagernet/sing-box/adapter/outbound"
-	"github.com/sagernet/sing-box/protocol/hysteria"
-	"github.com/sagernet/sing-box/protocol/hysteria2"
-	_ "github.com/sagernet/sing-box/protocol/naive/quic"
-	"github.com/sagernet/sing-box/protocol/tuic"
-	_ "github.com/sagernet/sing-box/transport/v2rayquic"
+	"github.com/zytakeshi/vpncheap-core/adapter/inbound"
+	"github.com/zytakeshi/vpncheap-core/adapter/outbound"
+	"github.com/zytakeshi/vpncheap-core/protocol/hysteria"
+	"github.com/zytakeshi/vpncheap-core/protocol/hysteria2"
+	_ "github.com/zytakeshi/vpncheap-core/protocol/naive/quic"
+	"github.com/zytakeshi/vpncheap-core/protocol/tuic"
+	_ "github.com/zytakeshi/vpncheap-core/transport/v2rayquic"
 	_ "github.com/sagernet/sing-dns/quic"
 )
 

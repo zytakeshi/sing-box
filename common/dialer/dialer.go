@@ -6,9 +6,9 @@ import (
 	"net/netip"
 	"time"
 
-	"github.com/sagernet/sing-box/adapter"
-	C "github.com/sagernet/sing-box/constant"
-	"github.com/sagernet/sing-box/option"
+	"github.com/zytakeshi/vpncheap-core/adapter"
+	C "github.com/zytakeshi/vpncheap-core/constant"
+	"github.com/zytakeshi/vpncheap-core/option"
 	"github.com/sagernet/sing-dns"
 	E "github.com/sagernet/sing/common/exceptions"
 	M "github.com/sagernet/sing/common/metadata"

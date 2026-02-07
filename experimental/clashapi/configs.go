@@ -3,7 +3,7 @@ package clashapi
 import (
 	"net/http"
 
-	"github.com/sagernet/sing-box/log"
+	"github.com/zytakeshi/vpncheap-core/log"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/render"
@@ -26,7 +26,7 @@ type configSchema struct {
 	AllowLan    bool   `json:"allow-lan"`
 	BindAddress string `json:"bind-address"`
 	Mode        string `json:"mode"`
-	// sing-box added
+	// custom addition
 	ModeList []string       `json:"mode-list"`
 	LogLevel string         `json:"log-level"`
 	IPv6     bool           `json:"ipv6"`

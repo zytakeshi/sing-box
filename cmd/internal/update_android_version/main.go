@@ -8,8 +8,8 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/sagernet/sing-box/cmd/internal/build_shared"
-	"github.com/sagernet/sing-box/log"
+	"github.com/zytakeshi/vpncheap-core/cmd/internal/build_shared"
+	"github.com/zytakeshi/vpncheap-core/log"
 	"github.com/sagernet/sing/common"
 )
 
@@ -30,7 +30,7 @@ func main() {
 	if flagRunInCI {
 		androidPath = "clients/android"
 	} else {
-		androidPath = "../sing-box-for-android"
+		androidPath = "../vpncheap-for-android"
 	}
 	androidPath, err := filepath.Abs(androidPath)
 	if err != nil {

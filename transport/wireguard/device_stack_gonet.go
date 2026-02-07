@@ -68,7 +68,7 @@ func DialTCPWithBind(ctx context.Context, s *stack.Stack, localAddr, remoteAddr 
 		}
 	}
 
-	// sing-box added: set keepalive
+	// custom addition: set keepalive
 	ep.SocketOptions().SetKeepAlive(true)
 	keepAliveIdle := tcpip.KeepaliveIdleOption(15 * time.Second)
 	ep.SetSockOpt(&keepAliveIdle)

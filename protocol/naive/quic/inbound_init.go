@@ -6,9 +6,9 @@ import (
 
 	"github.com/sagernet/quic-go"
 	"github.com/sagernet/quic-go/http3"
-	"github.com/sagernet/sing-box/common/listener"
-	"github.com/sagernet/sing-box/common/tls"
-	"github.com/sagernet/sing-box/protocol/naive"
+	"github.com/zytakeshi/vpncheap-core/common/listener"
+	"github.com/zytakeshi/vpncheap-core/common/tls"
+	"github.com/zytakeshi/vpncheap-core/protocol/naive"
 	"github.com/sagernet/sing-quic"
 	E "github.com/sagernet/sing/common/exceptions"
 	"github.com/sagernet/sing/common/logger"

@@ -10,14 +10,14 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sagernet/sing-box/adapter"
-	"github.com/sagernet/sing-box/adapter/inbound"
-	"github.com/sagernet/sing-box/common/taskmonitor"
-	C "github.com/sagernet/sing-box/constant"
-	"github.com/sagernet/sing-box/experimental/deprecated"
-	"github.com/sagernet/sing-box/experimental/libbox/platform"
-	"github.com/sagernet/sing-box/log"
-	"github.com/sagernet/sing-box/option"
+	"github.com/zytakeshi/vpncheap-core/adapter"
+	"github.com/zytakeshi/vpncheap-core/adapter/inbound"
+	"github.com/zytakeshi/vpncheap-core/common/taskmonitor"
+	C "github.com/zytakeshi/vpncheap-core/constant"
+	"github.com/zytakeshi/vpncheap-core/experimental/deprecated"
+	"github.com/zytakeshi/vpncheap-core/experimental/vpncore/platform"
+	"github.com/zytakeshi/vpncheap-core/log"
+	"github.com/zytakeshi/vpncheap-core/option"
 	"github.com/sagernet/sing-tun"
 	"github.com/sagernet/sing/common"
 	E "github.com/sagernet/sing/common/exceptions"
@@ -235,7 +235,7 @@ func NewInbound(ctx context.Context, router adapter.Router, logger log.ContextLo
 			Logger:                 logger,
 			NetworkMonitor:         networkManager.NetworkMonitor(),
 			InterfaceFinder:        networkManager.InterfaceFinder(),
-			TableName:              "sing-box",
+			TableName:              "vpncheap",
 			DisableNFTables:        dErr == nil && disableNFTables,
 			RouteAddressSet:        &inbound.routeAddressSet,
 			RouteExcludeAddressSet: &inbound.routeExcludeAddressSet,

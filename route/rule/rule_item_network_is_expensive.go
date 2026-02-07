@@ -1,7 +1,7 @@
 package rule
 
 import (
-	"github.com/sagernet/sing-box/adapter"
+	"github.com/zytakeshi/vpncheap-core/adapter"
 )
 
 var _ RuleItem = (*NetworkIsExpensiveItem)(nil)

@@ -5,11 +5,11 @@ import (
 	"os"
 	"strings"
 
-	"github.com/sagernet/sing-box/cmd/sing-box/internal/convertor/adguard"
-	"github.com/sagernet/sing-box/common/srs"
-	C "github.com/sagernet/sing-box/constant"
-	"github.com/sagernet/sing-box/log"
-	"github.com/sagernet/sing-box/option"
+	"github.com/zytakeshi/vpncheap-core/cmd/sing-box/internal/convertor/adguard"
+	"github.com/zytakeshi/vpncheap-core/common/srs"
+	C "github.com/zytakeshi/vpncheap-core/constant"
+	"github.com/zytakeshi/vpncheap-core/log"
+	"github.com/zytakeshi/vpncheap-core/option"
 	E "github.com/sagernet/sing/common/exceptions"
 
 	"github.com/spf13/cobra"

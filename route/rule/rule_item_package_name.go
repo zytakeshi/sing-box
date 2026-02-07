@@ -3,7 +3,7 @@ package rule
 import (
 	"strings"
 
-	"github.com/sagernet/sing-box/adapter"
+	"github.com/zytakeshi/vpncheap-core/adapter"
 )
 
 var _ RuleItem = (*PackageNameItem)(nil)

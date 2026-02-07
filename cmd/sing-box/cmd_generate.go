@@ -7,7 +7,7 @@ import (
 	"os"
 	"strconv"
 
-	"github.com/sagernet/sing-box/log"
+	"github.com/zytakeshi/vpncheap-core/log"
 
 	"github.com/gofrs/uuid/v5"
 	"github.com/spf13/cobra"

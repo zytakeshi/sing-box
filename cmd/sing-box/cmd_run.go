@@ -12,10 +12,10 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/sagernet/sing-box"
-	C "github.com/sagernet/sing-box/constant"
-	"github.com/sagernet/sing-box/log"
-	"github.com/sagernet/sing-box/option"
+	"github.com/zytakeshi/vpncheap-core"
+	C "github.com/zytakeshi/vpncheap-core/constant"
+	"github.com/zytakeshi/vpncheap-core/log"
+	"github.com/zytakeshi/vpncheap-core/option"
 	E "github.com/sagernet/sing/common/exceptions"
 	"github.com/sagernet/sing/common/json"
 	"github.com/sagernet/sing/common/json/badjson"
@@ -192,7 +192,7 @@ func run() error {
 			closed()
 			if osSignal != syscall.SIGHUP {
 				if err != nil {
-					log.Error(E.Cause(err, "sing-box did not closed properly"))
+					log.Error(E.Cause(err, "core did not close properly"))
 				}
 				return nil
 			}
@@ -208,5 +208,5 @@ func closeMonitor(ctx context.Context) {
 		return
 	default:
 	}
-	log.Fatal("sing-box did not close!")
+	log.Fatal("core did not close!")
 }

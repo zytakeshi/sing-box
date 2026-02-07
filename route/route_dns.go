@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"github.com/sagernet/sing-box/adapter"
-	C "github.com/sagernet/sing-box/constant"
-	R "github.com/sagernet/sing-box/route/rule"
+	"github.com/zytakeshi/vpncheap-core/adapter"
+	C "github.com/zytakeshi/vpncheap-core/constant"
+	R "github.com/zytakeshi/vpncheap-core/route/rule"
 	"github.com/sagernet/sing-dns"
 	"github.com/sagernet/sing-tun"
 	"github.com/sagernet/sing/common/cache"

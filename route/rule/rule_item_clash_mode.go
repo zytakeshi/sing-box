@@ -4,7 +4,7 @@ import (
 	"context"
 	"strings"
 
-	"github.com/sagernet/sing-box/adapter"
+	"github.com/zytakeshi/vpncheap-core/adapter"
 	"github.com/sagernet/sing/service"
 )
 

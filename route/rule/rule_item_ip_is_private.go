@@ -3,7 +3,7 @@ package rule
 import (
 	"net/netip"
 
-	"github.com/sagernet/sing-box/adapter"
+	"github.com/zytakeshi/vpncheap-core/adapter"
 	N "github.com/sagernet/sing/common/network"
 )
 

@@ -1,4 +1,4 @@
-module github.com/sagernet/sing-box
+module github.com/zytakeshi/vpncheap-core
 
 go 1.20
 

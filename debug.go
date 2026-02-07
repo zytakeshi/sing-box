@@ -3,8 +3,8 @@ package box
 import (
 	"runtime/debug"
 
-	"github.com/sagernet/sing-box/common/conntrack"
-	"github.com/sagernet/sing-box/option"
+	"github.com/zytakeshi/vpncheap-core/common/conntrack"
+	"github.com/zytakeshi/vpncheap-core/option"
 )
 
 func applyDebugOptions(options option.DebugOptions) {

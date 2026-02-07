@@ -4,8 +4,8 @@ import (
 	"net/netip"
 	"testing"
 
-	C "github.com/sagernet/sing-box/constant"
-	"github.com/sagernet/sing-box/option"
+	C "github.com/zytakeshi/vpncheap-core/constant"
+	"github.com/zytakeshi/vpncheap-core/option"
 	"github.com/sagernet/sing-shadowsocks2/shadowstream"
 	"github.com/sagernet/sing/common"
 	F "github.com/sagernet/sing/common/format"

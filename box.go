@@ -8,21 +8,21 @@ import (
 	"runtime/debug"
 	"time"
 
-	"github.com/sagernet/sing-box/adapter"
-	"github.com/sagernet/sing-box/adapter/endpoint"
-	"github.com/sagernet/sing-box/adapter/inbound"
-	"github.com/sagernet/sing-box/adapter/outbound"
-	"github.com/sagernet/sing-box/common/dialer"
-	"github.com/sagernet/sing-box/common/taskmonitor"
-	"github.com/sagernet/sing-box/common/tls"
-	C "github.com/sagernet/sing-box/constant"
-	"github.com/sagernet/sing-box/experimental"
-	"github.com/sagernet/sing-box/experimental/cachefile"
-	"github.com/sagernet/sing-box/experimental/libbox/platform"
-	"github.com/sagernet/sing-box/log"
-	"github.com/sagernet/sing-box/option"
-	"github.com/sagernet/sing-box/protocol/direct"
-	"github.com/sagernet/sing-box/route"
+	"github.com/zytakeshi/vpncheap-core/adapter"
+	"github.com/zytakeshi/vpncheap-core/adapter/endpoint"
+	"github.com/zytakeshi/vpncheap-core/adapter/inbound"
+	"github.com/zytakeshi/vpncheap-core/adapter/outbound"
+	"github.com/zytakeshi/vpncheap-core/common/dialer"
+	"github.com/zytakeshi/vpncheap-core/common/taskmonitor"
+	"github.com/zytakeshi/vpncheap-core/common/tls"
+	C "github.com/zytakeshi/vpncheap-core/constant"
+	"github.com/zytakeshi/vpncheap-core/experimental"
+	"github.com/zytakeshi/vpncheap-core/experimental/cachefile"
+	"github.com/zytakeshi/vpncheap-core/experimental/vpncore/platform"
+	"github.com/zytakeshi/vpncheap-core/log"
+	"github.com/zytakeshi/vpncheap-core/option"
+	"github.com/zytakeshi/vpncheap-core/protocol/direct"
+	"github.com/zytakeshi/vpncheap-core/route"
 	"github.com/sagernet/sing/common"
 	E "github.com/sagernet/sing/common/exceptions"
 	F "github.com/sagernet/sing/common/format"
@@ -318,7 +318,7 @@ func (s *Box) PreStart() error {
 		s.Close()
 		return err
 	}
-	s.logger.Info("sing-box pre-started (", F.Seconds(time.Since(s.createdAt).Seconds()), "s)")
+	s.logger.Info("core pre-started (", F.Seconds(time.Since(s.createdAt).Seconds()), "s)")
 	return nil
 }
 
@@ -337,7 +337,7 @@ func (s *Box) Start() error {
 		s.Close()
 		return err
 	}
-	s.logger.Info("sing-box started (", F.Seconds(time.Since(s.createdAt).Seconds()), "s)")
+	s.logger.Info("core started (", F.Seconds(time.Since(s.createdAt).Seconds()), "s)")
 	return nil
 }
 

@@ -7,10 +7,10 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/sagernet/sing-box"
-	"github.com/sagernet/sing-box/experimental/deprecated"
-	"github.com/sagernet/sing-box/include"
-	"github.com/sagernet/sing-box/log"
+	"github.com/zytakeshi/vpncheap-core"
+	"github.com/zytakeshi/vpncheap-core/experimental/deprecated"
+	"github.com/zytakeshi/vpncheap-core/include"
+	"github.com/zytakeshi/vpncheap-core/log"
 	"github.com/sagernet/sing/service"
 	"github.com/sagernet/sing/service/filemanager"
 
@@ -26,7 +26,7 @@ var (
 )
 
 var mainCommand = &cobra.Command{
-	Use:              "sing-box",
+	Use:              "vpncheap",
 	PersistentPreRun: preRun,
 }
 

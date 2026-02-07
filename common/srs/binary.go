@@ -7,8 +7,8 @@ import (
 	"io"
 	"net/netip"
 
-	C "github.com/sagernet/sing-box/constant"
-	"github.com/sagernet/sing-box/option"
+	C "github.com/zytakeshi/vpncheap-core/constant"
+	"github.com/zytakeshi/vpncheap-core/option"
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/domain"
 	E "github.com/sagernet/sing/common/exceptions"
@@ -51,7 +51,7 @@ func Read(reader io.Reader, recover bool) (ruleSetCompat option.PlainRuleSetComp
 		return
 	}
 	if magicBytes != MagicBytes {
-		err = E.New("invalid sing-box rule-set file")
+		err = E.New("invalid rule-set file")
 		return
 	}
 	var version uint8

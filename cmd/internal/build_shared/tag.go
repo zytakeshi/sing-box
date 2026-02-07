@@ -1,7 +1,7 @@
 package build_shared
 
 import (
-	"github.com/sagernet/sing-box/common/badversion"
+	"github.com/zytakeshi/vpncheap-core/common/badversion"
 	"github.com/sagernet/sing/common"
 	"github.com/sagernet/sing/common/shell"
 )

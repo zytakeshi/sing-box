@@ -7,8 +7,8 @@ import (
 	"net/netip"
 	"sync"
 
-	"github.com/sagernet/sing-box/common/geoip"
-	C "github.com/sagernet/sing-box/constant"
+	"github.com/zytakeshi/vpncheap-core/common/geoip"
+	C "github.com/zytakeshi/vpncheap-core/constant"
 	"github.com/sagernet/sing-dns"
 	M "github.com/sagernet/sing/common/metadata"
 	N "github.com/sagernet/sing/common/network"
