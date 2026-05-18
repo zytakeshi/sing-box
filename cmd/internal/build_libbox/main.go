@@ -63,10 +63,12 @@ func init() {
 	sharedFlags = append(sharedFlags, "-ldflags", "-X github.com/sagernet/sing-box/constant.Version="+currentTag+" -X internal/godebug.defaultGODEBUG=multipathtcp=0 -s -w -buildid=  -checklinkname=0")
 	debugFlags = append(debugFlags, "-ldflags", "-X github.com/sagernet/sing-box/constant.Version="+currentTag+" -X internal/godebug.defaultGODEBUG=multipathtcp=0 -checklinkname=0")
 
-	sharedTags = append(sharedTags, "with_gvisor", "with_quic", "with_wireguard", "with_utls", "with_naive_outbound", "with_clash_api", "badlinkname", "tfogo_checklinkname0")
+	// Removed for size: with_naive_outbound (NaiveProxy/Chromium cronet),
+	// with_wireguard, with_tailscale (+ 11 ts_omit_* flags). VPNCheap's config
+	// adapter only emits vmess/vless/trojan/shadowsocks/hysteria2/anytls
+	// outbounds (lib/services/config_adapter_service.dart).
+	sharedTags = append(sharedTags, "with_gvisor", "with_quic", "with_utls", "with_clash_api", "badlinkname", "tfogo_checklinkname0")
 	darwinTags = append(darwinTags, "with_dhcp", "grpcnotrace")
-	// memcTags = append(memcTags, "with_tailscale")
-	sharedTags = append(sharedTags, "with_tailscale", "ts_omit_logtail", "ts_omit_ssh", "ts_omit_drive", "ts_omit_taildrop", "ts_omit_webclient", "ts_omit_doctor", "ts_omit_capture", "ts_omit_kube", "ts_omit_aws", "ts_omit_synology", "ts_omit_bird")
 	notMemcTags = append(notMemcTags, "with_low_memory")
 	debugTags = append(debugTags, "debug")
 }
@@ -215,7 +217,13 @@ func buildApple() {
 		args = append(args, debugFlags...)
 	}
 
-	tags := append(sharedTags, darwinTags...)
+	// Remove with_naive_outbound for Apple builds — libcronet.a (Chromium/Cronet)
+	// contains private Apple API symbols (__kCFBundleNumericVersionKey,
+	// __kLSOpenOptionBackgroundLaunchKey) that cause App Store rejection.
+	// The iOS libcronet.a omits these, but the macOS variant includes them.
+	// NaiveProxy outbound is not user-facing in VilaNet, so this is safe.
+	appleSharedTags := filterTags(sharedTags, "with_naive_outbound")
+	tags := append(appleSharedTags, darwinTags...)
 	//if withTailscale {
 	//	tags = append(tags, memcTags...)
 	//}

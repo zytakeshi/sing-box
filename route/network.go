@@ -152,6 +152,12 @@ func (r *NetworkManager) Start(stage adapter.StartStage) error {
 				return err
 			}
 		}
+		// Pre-populate network interfaces synchronously to avoid a race where
+		// remote rule-set downloads fail with "no available network interface"
+		// because the platform's async interface monitor callback hasn't fired yet.
+		if err := r.UpdateInterfaces(); err != nil {
+			r.logger.Warn("pre-populate network interfaces: ", err)
+		}
 	case adapter.StartStateStart:
 		if runtime.GOOS == "windows" {
 			powerListener, err := winpowrprof.NewEventListener(r.notifyWindowsPowerEvent)
