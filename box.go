@@ -190,7 +190,8 @@ func New(options Options) (*Box, error) {
 		return nil, E.Cause(err, "initialize network manager")
 	}
 	service.MustRegister[adapter.NetworkManager](ctx, networkManager)
-	connectionManager := route.NewConnectionManager(logFactory.NewLogger("connection"))
+	connectionFailureBackoff := experimentalOptions.ConnectionFailureBackoff != nil && experimentalOptions.ConnectionFailureBackoff.Enabled
+	connectionManager := route.NewConnectionManager(logFactory.NewLogger("connection"), connectionFailureBackoff)
 	service.MustRegister[adapter.ConnectionManager](ctx, connectionManager)
 	router := route.NewRouter(ctx, logFactory, routeOptions, dnsOptions)
 	service.MustRegister[adapter.Router](ctx, router)
@@ -500,6 +501,11 @@ func (s *Box) Close() error {
 	default:
 		close(s.done)
 	}
+	// Cancel in-flight backoff dials and reject new admissions BEFORE outbound
+	// shutdown, so a paced timer cannot dial a half-closed outbound. The
+	// connection close below completes the wait. Idempotent + no-op when the
+	// failure-backoff gate is disabled.
+	s.connection.BeginClose()
 	var err error
 	for _, closeItem := range []struct {
 		name    string
