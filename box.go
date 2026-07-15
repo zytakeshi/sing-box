@@ -228,7 +228,8 @@ func New(options Options) (*Box, error) {
 	}
 	service.MustRegister[adapter.DNSRouter](ctx, dnsRouter)
 	service.MustRegister[adapter.DNSRuleSetUpdateValidator](ctx, dnsRouter)
-	connectionManager := route.NewConnectionManager(logFactory.NewLogger("connection"))
+	connectionFailureBackoff := experimentalOptions.ConnectionFailureBackoff != nil && experimentalOptions.ConnectionFailureBackoff.Enabled
+	connectionManager := route.NewConnectionManager(logFactory.NewLogger("connection"), connectionFailureBackoff)
 	service.MustRegister[adapter.ConnectionManager](ctx, connectionManager)
 	networkManager, err := route.NewNetworkManager(ctx, logFactory.NewLogger("network"), routeOptions, dnsOptions)
 	if err != nil {
@@ -614,6 +615,11 @@ func (s *Box) Close() error {
 	default:
 		close(s.done)
 	}
+	// Cancel in-flight backoff dials and reject new admissions BEFORE outbound
+	// shutdown, so a paced timer cannot dial a half-closed outbound. The
+	// connection close below completes the wait. Idempotent + no-op when the
+	// failure-backoff gate is disabled.
+	s.connection.BeginClose()
 	var err error
 	if s.debugHTTPServer != nil {
 		err = E.Append(err, s.debugHTTPServer.Close(), func(err error) error {

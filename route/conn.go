@@ -36,12 +36,17 @@ type ConnectionManager struct {
 	logger      logger.ContextLogger
 	access      sync.Mutex
 	connections list.List[io.Closer]
+	backoff     *backoffController // nil unless connection_failure_backoff is enabled
 }
 
-func NewConnectionManager(logger logger.ContextLogger) *ConnectionManager {
-	return &ConnectionManager{
+func NewConnectionManager(logger logger.ContextLogger, failureBackoff bool) *ConnectionManager {
+	m := &ConnectionManager{
 		logger: logger,
 	}
+	if failureBackoff {
+		m.backoff = newBackoffController(logger)
+	}
+	return m
 }
 
 func (m *ConnectionManager) Start(stage adapter.StartStage) error {
@@ -54,7 +59,20 @@ func (m *ConnectionManager) Count() int {
 	return m.connections.Len()
 }
 
+// BeginClose is idempotent and cancels in-flight backoff dials + rejects new
+// admissions. It is invoked at the top of Box.Close() before outbound shutdown
+// so a paced timer cannot dial a half-closed outbound; Close() later completes
+// the wait. A no-op when the failure-backoff gate is disabled.
+func (m *ConnectionManager) BeginClose() {
+	if m.backoff != nil {
+		m.backoff.BeginClose()
+	}
+}
+
 func (m *ConnectionManager) CloseAll() {
+	if m.backoff != nil {
+		m.backoff.CloseAll()
+	}
 	m.access.Lock()
 	var closers []io.Closer
 	for element := m.connections.Front(); element != nil; {
@@ -70,7 +88,13 @@ func (m *ConnectionManager) CloseAll() {
 }
 
 func (m *ConnectionManager) Close() error {
+	if m.backoff != nil {
+		m.backoff.BeginClose()
+	}
 	m.CloseAll()
+	if m.backoff != nil {
+		m.backoff.Close()
+	}
 	return nil
 }
 
@@ -104,7 +128,33 @@ func (m *ConnectionManager) NewConnection(ctx context.Context, this N.Dialer, co
 		remoteConn net.Conn
 		err        error
 	)
-	if len(metadata.DestinationAddresses) > 0 || metadata.Destination.IsIP() {
+	var (
+		backoffTagName string
+		gated          bool
+	)
+	if m.backoff != nil {
+		backoffTagName, gated = backoffTag(this)
+	}
+	if gated {
+		// Route the dial through the failure-backoff gate. The closure re-runs
+		// exactly one of the two dial branches under an epoch-cancellable
+		// context (preserving both so epoch cancellation reaches the underlying
+		// serial/parallel-interface dialers). It escapes to the heap, so it is
+		// built only on the gated path — the bypass path below stays stock.
+		var proceed bool
+		remoteConn, err, proceed = m.backoff.runDial(ctx, backoffTagName, func(dialCtx context.Context) (net.Conn, error) {
+			if len(metadata.DestinationAddresses) > 0 || metadata.Destination.IsIP() {
+				return dialer.DialSerialNetwork(dialCtx, this, N.NetworkTCP, metadata.Destination, metadata.DestinationAddresses, metadata.NetworkStrategy, metadata.NetworkType, metadata.FallbackNetworkType, metadata.FallbackDelay)
+			}
+			return this.DialContext(dialCtx, N.NetworkTCP, metadata.Destination)
+		})
+		if !proceed {
+			// Aborted by the gate (overflow / epoch reset / stale result);
+			// close the inbound quietly with no terminal error log.
+			N.CloseOnHandshakeFailure(conn, onClose, err)
+			return
+		}
+	} else if len(metadata.DestinationAddresses) > 0 || metadata.Destination.IsIP() {
 		remoteConn, err = dialer.DialSerialNetwork(ctx, this, N.NetworkTCP, metadata.Destination, metadata.DestinationAddresses, metadata.NetworkStrategy, metadata.NetworkType, metadata.FallbackNetworkType, metadata.FallbackDelay)
 	} else {
 		remoteConn, err = this.DialContext(ctx, N.NetworkTCP, metadata.Destination)
