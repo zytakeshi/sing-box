@@ -2,6 +2,7 @@ package transport
 
 import (
 	"context"
+	"errors"
 	"net"
 	"sync"
 	"sync/atomic"
@@ -36,12 +37,31 @@ type UDPTransport struct {
 	serverAddr M.Socksaddr
 	udpSize    atomic.Int32
 
-	connection *ConnPool[net.Conn]
+	connection *ConnPool[*udpConn]
 
 	callbackAccess sync.RWMutex
 	queryId        uint16
 	callbacks      map[uint16]*udpCallback
 }
+
+// udpConn carries a per-socket read counter alongside the connection. recvLoop
+// bumps readEpoch on every packet successfully read from THIS socket; a query
+// that times out while its socket's epoch has not moved proves nothing arrived
+// there for the whole request window, so the socket is assumed silently dead
+// (WAN redial / NAT mapping expiry) and gets invalidated instead of returned to
+// the pool. Keeping the counter on the connection rather than the transport
+// means a late read on a superseded generation cannot mask a dead successor.
+type udpConn struct {
+	net.Conn
+	readEpoch atomic.Uint64
+}
+
+// errUDPSharedConnInvalidated is the cancellation cause handed to the pool when
+// a quiet deadline evicts the shared socket. The query that triggered the
+// eviction still returns its own ctx.Err(); siblings waiting on the same socket
+// observe this instead, so a peer's eviction is never mistaken for their own
+// deadline in logs or retry policy.
+var errUDPSharedConnInvalidated = errors.New("UDP DNS shared connection invalidated after idle deadline")
 
 type udpCallback struct {
 	access   sync.Mutex
@@ -71,12 +91,12 @@ func NewUDPRaw(logger logger.ContextLogger, adapter dns.TransportAdapter, dialer
 		dialer:           dialerInstance,
 		serverAddr:       serverAddr,
 		callbacks:        make(map[uint16]*udpCallback),
-		connection: NewConnPool(ConnPoolOptions[net.Conn]{
+		connection: NewConnPool(ConnPoolOptions[*udpConn]{
 			Mode: ConnPoolSingle,
-			IsAlive: func(conn net.Conn) bool {
+			IsAlive: func(conn *udpConn) bool {
 				return conn != nil
 			},
-			Close: func(conn net.Conn, cause error) {
+			Close: func(conn *udpConn, cause error) {
 				conn.Close()
 			},
 		}),
@@ -158,20 +178,6 @@ func (t *UDPTransport) exchange(ctx context.Context, message *mDNS.Msg) (*mDNS.M
 		}
 	}
 
-	conn, connCtx, created, err := t.connection.AcquireShared(ctx, func(ctx context.Context) (net.Conn, error) {
-		rawConn, err := t.dialer.DialContext(ctx, N.NetworkUDP, t.serverAddr)
-		if err != nil {
-			return nil, E.Cause(err, "dial UDP connection")
-		}
-		return rawConn, nil
-	})
-	if err != nil {
-		return nil, err
-	}
-	if created {
-		go t.recvLoop(conn)
-	}
-
 	callback := &udpCallback{
 		done: make(chan struct{}),
 	}
@@ -180,7 +186,6 @@ func (t *UDPTransport) exchange(ctx context.Context, message *mDNS.Msg) (*mDNS.M
 	queryId, err := t.nextAvailableQueryId()
 	if err != nil {
 		t.callbackAccess.Unlock()
-		t.connection.Release(conn, true)
 		return nil, err
 	}
 	t.callbacks[queryId] = callback
@@ -205,10 +210,47 @@ func (t *UDPTransport) exchange(ctx context.Context, message *mDNS.Msg) (*mDNS.M
 		return nil, err
 	}
 
-	_, err = conn.Write(rawMessage)
-	if err != nil {
+	var (
+		conn         *udpConn
+		connCtx      context.Context
+		readEpoch    uint64
+		firstAttempt = true
+	)
+	for {
+		var created bool
+		conn, connCtx, created, err = t.connection.AcquireShared(ctx, func(ctx context.Context) (*udpConn, error) {
+			rawConn, err := t.dialer.DialContext(ctx, N.NetworkUDP, t.serverAddr)
+			if err != nil {
+				return nil, E.Cause(err, "dial UDP connection")
+			}
+			return &udpConn{Conn: rawConn}, nil
+		})
+		if err != nil {
+			return nil, err
+		}
+		if created {
+			go t.recvLoop(conn)
+		}
+
+		readEpoch = conn.readEpoch.Load()
+
+		_, err = conn.Write(rawMessage)
+		if err == nil {
+			break
+		}
 		t.connection.Invalidate(conn, err)
-		return nil, E.Cause(err, "write request")
+		// A write failure on a socket we did NOT dial ourselves usually means a
+		// sibling already tore it down (or the kernel did) between acquire and
+		// write — the query never reached the wire, so failing it would report a
+		// stale peer's problem as ours. Retry exactly once against whatever the
+		// pool hands back, which is a freshly dialed socket now the old one is
+		// invalidated. A conn we just dialed, a second failure, or an expired
+		// caller context all fail immediately. Mirrors upstream 1.14's
+		// `if !created && firstAttempt { continue }`.
+		if created || !firstAttempt || ctx.Err() != nil {
+			return nil, E.Cause(err, "write request")
+		}
+		firstAttempt = false
 	}
 
 	select {
@@ -219,12 +261,25 @@ func (t *UDPTransport) exchange(ctx context.Context, message *mDNS.Msg) (*mDNS.M
 	case <-connCtx.Done():
 		return nil, context.Cause(connCtx)
 	case <-ctx.Done():
-		t.connection.Release(conn, true)
-		return nil, ctx.Err()
+		err = ctx.Err()
+		// A real deadline with no read progress on this socket since the query
+		// was written means the socket is silently dead: drop it so the next
+		// query redials. Plain cancellation says nothing about the socket, so
+		// it still goes back to the pool.
+		//
+		// The eviction cause is deliberately NOT this query's ctx.Err(): it
+		// becomes connCtx's cancellation cause for every sibling still waiting
+		// on this socket, and their own deadlines have not expired.
+		if errors.Is(err, context.DeadlineExceeded) && conn.readEpoch.Load() == readEpoch {
+			t.connection.Invalidate(conn, errUDPSharedConnInvalidated)
+		} else {
+			t.connection.Release(conn, true)
+		}
+		return nil, err
 	}
 }
 
-func (t *UDPTransport) recvLoop(conn net.Conn) {
+func (t *UDPTransport) recvLoop(conn *udpConn) {
 	for {
 		buffer := buf.NewSize(int(t.udpSize.Load()))
 		_, err := buffer.ReadOnceFrom(conn)
@@ -233,6 +288,7 @@ func (t *UDPTransport) recvLoop(conn net.Conn) {
 			t.connection.Invalidate(conn, err)
 			return
 		}
+		conn.readEpoch.Add(1)
 
 		var message mDNS.Msg
 		err = message.Unpack(buffer.Bytes())
