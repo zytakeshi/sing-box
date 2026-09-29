@@ -45,6 +45,7 @@ func main() {
 
 var (
 	sharedFlags []string
+	appleFlags  []string
 	debugFlags  []string
 	sharedTags  []string
 	darwinTags  []string
@@ -60,13 +61,22 @@ func init() {
 	if err != nil {
 		currentTag = "unknown"
 	}
-	sharedFlags = append(sharedFlags, "-ldflags", build_shared.LinkerFlags(currentTag, false))
+	// VilaNet: Android keeps symbols (no -s -w) so native crashes can be
+	// symbolicated in Sentry/GlitchTip; Apple builds stay stripped.
+	sharedFlags = append(sharedFlags, "-ldflags", build_shared.LinkerFlags(currentTag, true)+" -buildid=")
+	appleFlags = append(appleFlags, "-trimpath")
+	appleFlags = append(appleFlags, "-buildvcs=false")
+	appleFlags = append(appleFlags, "-ldflags", build_shared.LinkerFlags(currentTag, false))
 	debugFlags = append(debugFlags, "-ldflags", build_shared.LinkerFlags(currentTag, true))
 
-	sharedTags = append(sharedTags, "with_quic", "with_wireguard", "with_utls", "with_naive_outbound", "with_clash_api", "with_usbip", "with_openvpn", "with_openconnect", "badlinkname", "tfogo_checklinkname0")
+	// VilaNet tag set: with_naive_outbound, with_wireguard, with_tailscale
+	// (+ ts_omit_*), with_usbip, with_openvpn, with_openconnect removed for
+	// size; the config adapter only emits vmess/vless/trojan/shadowsocks/
+	// hysteria2/anytls outbounds. with_gvisor is added back (upstream dropped
+	// it from the 1.15 libbox defaults) so configs that still pin
+	// "stack": "gvisor" keep loading while the new sing-tun stack is measured.
+	sharedTags = append(sharedTags, "with_gvisor", "with_quic", "with_utls", "with_clash_api", "badlinkname", "tfogo_checklinkname0")
 	darwinTags = append(darwinTags, "with_dhcp", "grpcnotrace")
-	// memcTags = append(memcTags, "with_tailscale")
-	sharedTags = append(sharedTags, "with_tailscale", "ts_omit_logtail", "ts_omit_ssh", "ts_omit_drive", "ts_omit_taildrop", "ts_omit_webclient", "ts_omit_doctor", "ts_omit_capture", "ts_omit_kube", "ts_omit_aws", "ts_omit_synology", "ts_omit_bird")
 	notMemcTags = append(notMemcTags, "with_low_memory")
 	debugTags = append(debugTags, "debug")
 }
@@ -205,7 +215,9 @@ func buildApple() {
 		"-libname=box",
 		"-tags-not-macos=with_low_memory",
 		"-iosversion=15.0",
-		"-macosversion=13.0",
+		// VilaNet ships macOS 12.0 (MACOSX_DEPLOYMENT_TARGET, ticket 18917
+		// class); upstream raised the libbox floor to 13.0 in 1.14.
+		"-macosversion=12.0",
 		"-tvosversion=17.0",
 	}
 	//if !withTailscale {
@@ -213,7 +225,7 @@ func buildApple() {
 	//}
 
 	if !debugEnabled {
-		args = append(args, sharedFlags...)
+		args = append(args, appleFlags...)
 	} else {
 		args = append(args, debugFlags...)
 	}

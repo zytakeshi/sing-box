@@ -39,6 +39,7 @@ var (
 	sOOMMemoryLimit          int64
 	sPowerReportEnabled      bool
 	sPlatformMetadata        []byte
+	sCrashReportDisabled     bool
 )
 
 func init() {
@@ -63,6 +64,13 @@ type SetupOptions struct {
 	OomMemoryLimit          int64
 	PowerReportEnabled      bool
 	PlatformMetadata        string
+	// VilaNet: DisableCrashReport skips the stderr crash-log redirect
+	// (os.Create + Chown + SetCrashOutput), the platform snapshot and the
+	// configuration.json snapshot. Apple network extensions cannot always
+	// Chown inside the app-group container (a failure there fails every
+	// connect) and the embedder already owns stderr; the config snapshot
+	// would persist node credentials in plaintext.
+	DisableCrashReport bool
 }
 
 func applySetupOptions(options *SetupOptions) {
@@ -84,6 +92,7 @@ func applySetupOptions(options *SetupOptions) {
 	sCrashReportSource = options.CrashReportSource
 	sAppVersion = options.AppVersion
 	sAppMarketingVersion = options.AppMarketingVersion
+	sCrashReportDisabled = options.DisableCrashReport
 	ReloadSetupOptions(options)
 }
 
@@ -116,6 +125,9 @@ func Setup(options *SetupOptions) error {
 	applySetupOptions(options)
 	os.MkdirAll(sWorkingPath, 0o777)
 	os.MkdirAll(sTempPath, 0o777)
+	if sCrashReportDisabled {
+		return nil
+	}
 	err := redirectStderr(filepath.Join(sWorkingPath, "CrashReport-"+sCrashReportSource+".log"))
 	savePlatformSnapshot()
 	return err

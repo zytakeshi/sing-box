@@ -62,6 +62,9 @@ func configSnapshotPath() string {
 }
 
 func saveConfigSnapshot(configContent string) {
+	if sCrashReportDisabled {
+		return
+	}
 	snapshotPath := configSnapshotPath()
 	os.WriteFile(snapshotPath, []byte(configContent), 0o666)
 	chownReport(snapshotPath)

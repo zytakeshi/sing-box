@@ -170,6 +170,13 @@ func (r *NetworkManager) Start(stage adapter.StartStage) error {
 			}
 			r.interfaceUpdateElement = r.interfaceMonitor.RegisterCallback(r.notifyInterfaceUpdate)
 		}
+		// VilaNet: pre-populate network interfaces synchronously to avoid a race
+		// where remote rule-set downloads fail with "no available network
+		// interface" because the platform's async interface monitor callback
+		// hasn't fired yet.
+		if err := r.UpdateInterfaces(); err != nil {
+			r.logger.Warn("pre-populate network interfaces: ", err)
+		}
 	case adapter.StartStateStart:
 		if C.IsAndroid && r.platformInterface == nil {
 			monitor.Start("initialize package manager")
