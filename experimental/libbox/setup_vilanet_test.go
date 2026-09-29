@@ -1,9 +1,12 @@
 package libbox
 
 import (
+	"context"
 	"os"
 	"path/filepath"
 	"testing"
+
+	"github.com/sagernet/sing/service"
 )
 
 // VilaNet fork patch 4: DisableCrashReport must leave no crash log, platform
@@ -48,5 +51,35 @@ func TestSetupDefaultStillRedirectsStderr(t *testing.T) {
 	}
 	if _, err := os.Stat(filepath.Join(working, "CrashReport-test.log")); err != nil {
 		t.Fatalf("crash log missing on default path: %v", err)
+	}
+}
+
+// VilaNet fork patch 4 (extension): with DisableCrashReport the OOM report
+// recorder is never created, so no draft directory (core log, connections,
+// pprof, heap dump) can appear under the working path.
+func TestOOMRecorderGatedByDisableCrashReport(t *testing.T) {
+	base := t.TempDir()
+	working := filepath.Join(base, "working")
+	t.Cleanup(func() { sCrashReportDisabled = false })
+	for _, disabled := range []bool{true, false} {
+		if err := Setup(&SetupOptions{
+			BasePath:           base,
+			WorkingPath:        working,
+			TempPath:           filepath.Join(base, "temp"),
+			CrashReportSource:  "test",
+			DisableCrashReport: disabled,
+		}); err != nil {
+			t.Fatalf("Setup: %v", err)
+		}
+		recorder := newOOMRecorder(service.ContextWithDefaultRegistry(context.Background()), nil)
+		if disabled && recorder != nil {
+			t.Fatal("OOM recorder created although DisableCrashReport is set")
+		}
+		if !disabled {
+			if recorder == nil {
+				t.Fatal("OOM recorder missing on the default path")
+			}
+			_ = recorder.Close()
+		}
 	}
 }

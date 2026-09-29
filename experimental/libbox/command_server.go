@@ -83,9 +83,13 @@ func NewCommandServer(handler CommandServerHandler, platformInterface PlatformIn
 		// GroupID:          sGroupID,
 		// SystemProxyEnabled: false,
 	})
-	oomRecorder := oomkiller.NewRecorder(OOMRecorderOptions(server.StartedService))
-	service.MustRegister[*oomkiller.Recorder](ctx, oomRecorder)
-	oomRecorder.Start()
+	// VilaNet: DisableCrashReport also disables the OOM report recorder. Its
+	// drafts (unscrubbed core log, connections, pprof profiles and, after a
+	// reset, a full heap dump holding decrypted node credentials) are written
+	// 0666 under the working path. Every recorder consumer nil-checks it
+	// (service/oomkiller, daemon/managed_service.go, daemon/started_service.go),
+	// so the memory limit and killer keep working without it.
+	oomRecorder := newOOMRecorder(ctx, server.StartedService)
 	server.oomRecorder = oomRecorder
 	server.managedService = daemon.NewManagedService(daemon.ManagedServiceOptions{
 		Handler:     (*platformHandler)(server),
@@ -197,7 +201,9 @@ func (s *CommandServer) Close() {
 	}
 	common.Close(s.listener)
 	s.StartedService.Close()
-	s.oomRecorder.Close()
+	if s.oomRecorder != nil {
+		s.oomRecorder.Close()
+	}
 	s.powerManager.Close()
 }
 
@@ -357,4 +363,17 @@ func (h *platformHandler) WriteDebugMessage(message string) {
 
 func (h *platformHandler) ConnectSSHAgent() (int32, error) {
 	return (*CommandServer)(h).handler.ConnectSSHAgent()
+}
+
+// newOOMRecorder creates, registers and starts the OOM report recorder, or
+// returns nil when the embedder set SetupOptions.DisableCrashReport (VilaNet
+// fork patch 4).
+func newOOMRecorder(ctx context.Context, startedService *daemon.StartedService) *oomkiller.Recorder {
+	if sCrashReportDisabled {
+		return nil
+	}
+	oomRecorder := oomkiller.NewRecorder(OOMRecorderOptions(startedService))
+	service.MustRegister[*oomkiller.Recorder](ctx, oomRecorder)
+	oomRecorder.Start()
+	return oomRecorder
 }
