@@ -165,3 +165,7 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	lukechampine.com/blake3 v1.3.0 // indirect
 )
+
+// VilaNet fork patch #4 (#554): sing-tun v0.8.15 vendored verbatim so the
+// gvisor Attach(nil) fix (upstream sing-tun be4ce8d32) can ride the 1.13.x core.
+replace github.com/sagernet/sing-tun => ./third_party/sing-tun
