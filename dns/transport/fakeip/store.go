@@ -105,7 +105,9 @@ func (s *Store) Close() error {
 }
 
 func (s *Store) Create(domain string, isIPv6 bool) (netip.Addr, error) {
-	if address, loaded := s.storage.FakeIPLoadDomain(domain, isIPv6); loaded {
+	// A stored address outside the configured range is replaced: the router
+	// only maps addresses inside the range back to their domain.
+	if address, loaded := s.storage.FakeIPLoadDomain(domain, isIPv6); loaded && s.Contains(address) {
 		return address, nil
 	}
 
@@ -113,7 +115,7 @@ func (s *Store) Create(domain string, isIPv6 bool) (netip.Addr, error) {
 	defer s.addressAccess.Unlock()
 
 	// Double-check after acquiring lock
-	if address, loaded := s.storage.FakeIPLoadDomain(domain, isIPv6); loaded {
+	if address, loaded := s.storage.FakeIPLoadDomain(domain, isIPv6); loaded && s.Contains(address) {
 		return address, nil
 	}
 
