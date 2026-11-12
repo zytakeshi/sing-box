@@ -24,13 +24,31 @@ var (
 
 func openCacheFile(t *testing.T, path string) *cachefile.CacheFile {
 	t.Helper()
-	cacheFile := cachefile.New(context.Background(), option.CacheFileOptions{
+	return openCacheFileWith(t, option.CacheFileOptions{
 		Enabled:     true,
 		Path:        path,
 		StoreFakeIP: true,
 	})
+}
+
+func openCacheFileWith(t *testing.T, options option.CacheFileOptions) *cachefile.CacheFile {
+	t.Helper()
+	cacheFile := cachefile.New(context.Background(), options)
 	require.NoError(t, cacheFile.Start(adapter.StartStateInitialize))
 	return cacheFile
+}
+
+// requireMappedBack asserts the invariant the router relies on: an address the
+// store hands out is inside its range and maps back to the domain.
+func requireMappedBack(t *testing.T, store *fakeip.Store, domain string) netip.Addr {
+	t.Helper()
+	address, err := store.Create(domain, false)
+	require.NoError(t, err)
+	require.True(t, store.Contains(address), "%s: address %s is outside the configured range", domain, address)
+	mapped, loaded := store.Lookup(address)
+	require.True(t, loaded, "%s: address %s has no mapping", domain, address)
+	require.Equal(t, domain, mapped)
+	return address
 }
 
 // startStore opens the cache file at path and starts a store on it. The
@@ -254,4 +272,64 @@ func TestStoreReusesAddressesWhenRangeIsFull(t *testing.T) {
 		require.True(t, loaded)
 		require.Equal(t, domain, owner)
 	}
+}
+
+// The cache ID partitions the selector and rule-set state, not the FakeIP
+// table: a session with another cache ID keeps answering the same addresses.
+func TestStoreCacheIDChangeKeepsMappings(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "cache.db")
+	open := func(cacheID string) (*fakeip.Store, func()) {
+		cacheFile := openCacheFileWith(t, option.CacheFileOptions{Enabled: true, Path: path, StoreFakeIP: true, CacheID: cacheID})
+		ctx := service.ContextWith[adapter.CacheFile](context.Background(), cacheFile)
+		store := fakeip.NewStore(ctx, log.StdLogger(), rangeB, netip.Prefix{})
+		require.NoError(t, store.Start())
+		return store, func() {
+			require.NoError(t, store.Close())
+			require.NoError(t, cacheFile.Close())
+		}
+	}
+
+	store, closeStore := open("first")
+	first := requireMappedBack(t, store, "example.org")
+	second := requireMappedBack(t, store, "example.com")
+	closeStore()
+
+	store, closeStore = open("second")
+	defer closeStore()
+	require.Equal(t, second, requireMappedBack(t, store, "example.com"))
+	require.Equal(t, first, requireMappedBack(t, store, "example.org"))
+	third := requireMappedBack(t, store, "example.net")
+	require.NotEqual(t, first, third)
+	require.NotEqual(t, second, third)
+}
+
+// A session without store_fakeip uses a table in memory. Going back to the
+// stored table must keep every answer inside the range and mapped back, and a
+// domain that was only seen in memory must not take a stored domain's address.
+func TestStoreFakeIPStorageSwitchStaysConsistent(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "cache.db")
+
+	store, closeStore := startStore(t, path, rangeB, netip.Prefix{})
+	stored := requireMappedBack(t, store, "stored.example")
+	closeStore()
+
+	cacheFile := openCacheFileWith(t, option.CacheFileOptions{Enabled: true, Path: path})
+	ctx := service.ContextWith[adapter.CacheFile](context.Background(), cacheFile)
+	memoryStore := fakeip.NewStore(ctx, log.StdLogger(), rangeB, netip.Prefix{})
+	require.NoError(t, memoryStore.Start())
+	requireMappedBack(t, memoryStore, "memory.example")
+	requireMappedBack(t, memoryStore, "stored.example")
+	require.NoError(t, memoryStore.Close())
+	require.NoError(t, cacheFile.Close())
+
+	store, closeStore = startStore(t, path, rangeB, netip.Prefix{})
+	defer closeStore()
+	require.Equal(t, stored, requireMappedBack(t, store, "stored.example"))
+	fresh := requireMappedBack(t, store, "memory.example")
+	require.NotEqual(t, stored, fresh)
+	mapped, loaded := store.Lookup(stored)
+	require.True(t, loaded)
+	require.Equal(t, "stored.example", mapped)
 }
