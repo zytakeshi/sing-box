@@ -22,9 +22,11 @@ type Store struct {
 	inet6Last  netip.Addr
 	storage    adapter.FakeIPStorage
 
-	addressAccess sync.Mutex
-	inet4Current  netip.Addr
-	inet6Current  netip.Addr
+	addressAccess  sync.Mutex
+	inet4Current   netip.Addr
+	inet6Current   netip.Addr
+	inet4Exhausted bool
+	inet6Exhausted bool
 }
 
 func NewStore(ctx context.Context, logger logger.Logger, inet4Range netip.Prefix, inet6Range netip.Prefix) *Store {
@@ -59,6 +61,38 @@ func broadcastAddress(prefix netip.Prefix) netip.Addr {
 	return netip.AddrFrom16(raw)
 }
 
+func nextAddress(addressRange netip.Prefix, last netip.Addr, current netip.Addr) netip.Addr {
+	address := current.Next()
+	if address == last || !addressRange.Contains(address) {
+		address = addressRange.Addr().Next().Next()
+	}
+	return address
+}
+
+// nextFreeAddress returns the next address after current that no other domain
+// owns, so an allocation never takes over an address that a client may still
+// hold for another domain. After a full cycle without a free address the range
+// is exhausted: addresses are then reused in order, as before, and the cycle
+// is not walked again until the store is restarted or reset.
+func (s *Store) nextFreeAddress(addressRange netip.Prefix, last netip.Addr, current netip.Addr, domain string, exhausted *bool) netip.Addr {
+	first := nextAddress(addressRange, last, current)
+	if *exhausted {
+		return first
+	}
+	address := first
+	for {
+		owner, loaded := s.storage.FakeIPLoad(address)
+		if !loaded || owner == domain {
+			return address
+		}
+		address = nextAddress(addressRange, last, address)
+		if address == first {
+			*exhausted = true
+			return first
+		}
+	}
+}
+
 func (s *Store) Start() error {
 	var storage adapter.FakeIPStorage
 	cacheFile := service.FromContext[adapter.CacheFile](s.ctx)
@@ -79,7 +113,17 @@ func (s *Store) Start() error {
 		if s.inet6Range.IsValid() {
 			s.inet6Current = s.inet6Range.Addr().Next()
 		}
-		_ = storage.FakeIPReset()
+		// The stored metadata is consumed when it is read, so it is also
+		// missing after an unclean stop. Only a recorded range change resets
+		// the table. Without a record the mappings are kept, because clients
+		// may still hold them: Create replaces the ones outside the range and
+		// steps over the addresses the others occupy.
+		if metadata != nil {
+			err := storage.FakeIPReset()
+			if err != nil {
+				s.logger.Warn("reset FakeIP cache: ", err)
+			}
+		}
 	}
 	s.storage = storage
 	return nil
@@ -105,9 +149,13 @@ func (s *Store) Close() error {
 }
 
 func (s *Store) Create(domain string, isIPv6 bool) (netip.Addr, error) {
+	addressRange := s.inet4Range
+	if isIPv6 {
+		addressRange = s.inet6Range
+	}
 	// A stored address outside the configured range is replaced: the router
 	// only maps addresses inside the range back to their domain.
-	if address, loaded := s.storage.FakeIPLoadDomain(domain, isIPv6); loaded && s.Contains(address) {
+	if address, loaded := s.storage.FakeIPLoadDomain(domain, isIPv6); loaded && addressRange.Contains(address) {
 		return address, nil
 	}
 
@@ -115,7 +163,7 @@ func (s *Store) Create(domain string, isIPv6 bool) (netip.Addr, error) {
 	defer s.addressAccess.Unlock()
 
 	// Double-check after acquiring lock
-	if address, loaded := s.storage.FakeIPLoadDomain(domain, isIPv6); loaded && s.Contains(address) {
+	if address, loaded := s.storage.FakeIPLoadDomain(domain, isIPv6); loaded && addressRange.Contains(address) {
 		return address, nil
 	}
 
@@ -124,22 +172,14 @@ func (s *Store) Create(domain string, isIPv6 bool) (netip.Addr, error) {
 		if !s.inet4Current.IsValid() {
 			return netip.Addr{}, E.New("missing IPv4 fakeip address range")
 		}
-		nextAddress := s.inet4Current.Next()
-		if nextAddress == s.inet4Last || !s.inet4Range.Contains(nextAddress) {
-			nextAddress = s.inet4Range.Addr().Next().Next()
-		}
-		s.inet4Current = nextAddress
-		address = nextAddress
+		address = s.nextFreeAddress(s.inet4Range, s.inet4Last, s.inet4Current, domain, &s.inet4Exhausted)
+		s.inet4Current = address
 	} else {
 		if !s.inet6Current.IsValid() {
 			return netip.Addr{}, E.New("missing IPv6 fakeip address range")
 		}
-		nextAddress := s.inet6Current.Next()
-		if nextAddress == s.inet6Last || !s.inet6Range.Contains(nextAddress) {
-			nextAddress = s.inet6Range.Addr().Next().Next()
-		}
-		s.inet6Current = nextAddress
-		address = nextAddress
+		address = s.nextFreeAddress(s.inet6Range, s.inet6Last, s.inet6Current, domain, &s.inet6Exhausted)
+		s.inet6Current = address
 	}
 	err := s.storage.FakeIPStore(address, domain)
 	if err != nil {
@@ -159,5 +199,9 @@ func (s *Store) Lookup(address netip.Addr) (string, bool) {
 }
 
 func (s *Store) Reset() error {
+	s.addressAccess.Lock()
+	s.inet4Exhausted = false
+	s.inet6Exhausted = false
+	s.addressAccess.Unlock()
 	return s.storage.FakeIPReset()
 }

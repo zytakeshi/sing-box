@@ -37,14 +37,23 @@ func openCacheFile(t *testing.T, path string) *cachefile.CacheFile {
 // returned function closes both, like a clean shutdown.
 func startStore(t *testing.T, path string, inet4Range netip.Prefix, inet6Range netip.Prefix) (*fakeip.Store, func()) {
 	t.Helper()
-	cacheFile := openCacheFile(t, path)
-	ctx := service.ContextWith[adapter.CacheFile](context.Background(), cacheFile)
-	store := fakeip.NewStore(ctx, log.StdLogger(), inet4Range, inet6Range)
-	require.NoError(t, store.Start())
+	store, cacheFile := startStoreOnFile(t, path, inet4Range, inet6Range)
 	return store, func() {
 		require.NoError(t, store.Close())
 		require.NoError(t, cacheFile.Close())
 	}
+}
+
+// startStoreOnFile also returns the cache file, so a test can end the session
+// without Store.Close: the stored metadata is consumed by Start and only
+// written back by Close, so that is what an unclean stop leaves behind.
+func startStoreOnFile(t *testing.T, path string, inet4Range netip.Prefix, inet6Range netip.Prefix) (*fakeip.Store, *cachefile.CacheFile) {
+	t.Helper()
+	cacheFile := openCacheFile(t, path)
+	ctx := service.ContextWith[adapter.CacheFile](context.Background(), cacheFile)
+	store := fakeip.NewStore(ctx, log.StdLogger(), inet4Range, inet6Range)
+	require.NoError(t, store.Start())
+	return store, cacheFile
 }
 
 // A range change must leave no address of the old range behind, also when no
@@ -148,4 +157,101 @@ func TestStoreKeepsStoredAddressInsideRange(t *testing.T) {
 	require.NoError(t, err)
 	require.NotEqual(t, first, next)
 	require.NotEqual(t, other, next)
+}
+
+// After an unclean stop the metadata is missing. The mappings must survive:
+// clients may still hold the old answers, so a domain keeps its address and a
+// new domain never receives an address that another domain owns.
+func TestStoreUncleanStopKeepsMappings(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "cache.db")
+
+	store, cacheFile := startStoreOnFile(t, path, rangeB, netip.Prefix{})
+	first, err := store.Create("example.org", false)
+	require.NoError(t, err)
+	second, err := store.Create("example.com", false)
+	require.NoError(t, err)
+	require.NoError(t, cacheFile.Close()) // no store.Close()
+
+	store, closeStore := startStore(t, path, rangeB, netip.Prefix{})
+	defer closeStore()
+	// Ask in the opposite order: a reset table would hand example.org's
+	// address to example.com.
+	again, err := store.Create("example.com", false)
+	require.NoError(t, err)
+	require.Equal(t, second, again)
+	again, err = store.Create("example.org", false)
+	require.NoError(t, err)
+	require.Equal(t, first, again)
+	third, err := store.Create("example.net", false)
+	require.NoError(t, err)
+	require.NotEqual(t, first, third)
+	require.NotEqual(t, second, third)
+	domain, loaded := store.Lookup(first)
+	require.True(t, loaded)
+	require.Equal(t, "example.org", domain)
+	domain, loaded = store.Lookup(second)
+	require.True(t, loaded)
+	require.Equal(t, "example.com", domain)
+}
+
+// Replacing an out-of-range address must not take an address that another
+// domain owns, also when the stored pointer is behind the stored addresses.
+func TestStoreReplacementDoesNotDisplaceAnotherDomain(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "cache.db")
+	liveAddress := netip.MustParseAddr("198.18.0.2")
+	staleAddress := netip.MustParseAddr("198.20.0.2")
+
+	cacheFile := openCacheFile(t, path)
+	require.NoError(t, cacheFile.FakeIPStore(liveAddress, "live.example"))
+	require.NoError(t, cacheFile.FakeIPStore(staleAddress, "stale.example"))
+	require.NoError(t, cacheFile.FakeIPSaveMetadata(&adapter.FakeIPMetadata{
+		Inet4Range:   rangeB,
+		Inet4Current: netip.MustParseAddr("198.18.0.1"),
+	}))
+	require.NoError(t, cacheFile.Close())
+
+	store, closeStore := startStore(t, path, rangeB, netip.Prefix{})
+	defer closeStore()
+	address, err := store.Create("stale.example", false)
+	require.NoError(t, err)
+	require.True(t, store.Contains(address))
+	require.NotEqual(t, liveAddress, address)
+	domain, loaded := store.Lookup(liveAddress)
+	require.True(t, loaded)
+	require.Equal(t, "live.example", domain)
+	again, err := store.Create("live.example", false)
+	require.NoError(t, err)
+	require.Equal(t, liveAddress, again)
+	fresh, err := store.Create("new.example", false)
+	require.NoError(t, err)
+	require.NotEqual(t, liveAddress, fresh)
+	require.NotEqual(t, address, fresh)
+}
+
+// A full range still answers: addresses are reused, as before.
+func TestStoreReusesAddressesWhenRangeIsFull(t *testing.T) {
+	t.Parallel()
+	path := filepath.Join(t.TempDir(), "cache.db")
+	smallRange := netip.MustParsePrefix("198.18.0.0/29") // usable: .2 to .6
+
+	store, closeStore := startStore(t, path, smallRange, netip.Prefix{})
+	defer closeStore()
+	seen := make(map[netip.Addr]bool)
+	for _, domain := range []string{"a.example", "b.example", "c.example", "d.example", "e.example"} {
+		address, err := store.Create(domain, false)
+		require.NoError(t, err)
+		require.True(t, smallRange.Contains(address))
+		require.False(t, seen[address], "address %s was handed out twice while the range had room", address)
+		seen[address] = true
+	}
+	for _, domain := range []string{"f.example", "g.example"} {
+		address, err := store.Create(domain, false)
+		require.NoError(t, err)
+		require.True(t, seen[address], "address %s is outside the usable range", address)
+		owner, loaded := store.Lookup(address)
+		require.True(t, loaded)
+		require.Equal(t, domain, owner)
+	}
 }
