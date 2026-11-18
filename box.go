@@ -428,16 +428,15 @@ func (s *Box) PreStart() error {
 func (s *Box) Start() error {
 	err := s.start()
 	if err != nil {
-		// TODO: remove catch error
-		defer func() {
-			v := recover()
-			if v != nil {
-				println(err.Error())
-				debug.PrintStack()
-				println("panic on early start: " + fmt.Sprint(v))
-			}
-		}()
-		s.startCleanupErr = s.Close()
+		// The start error is always returned: a panic in the cleanup close
+		// used to be recovered with the named-less result left nil, so a
+		// failed start reported success. The panic is kept as the cleanup
+		// result instead.
+		s.startCleanupErr = closeRecoveringPanic(s.Close, func(v any) {
+			println(err.Error())
+			debug.PrintStack()
+			println("panic on early start: " + fmt.Sprint(v))
+		})
 		return err
 	}
 	s.logger.Info("sing-box started (", F.Seconds(time.Since(s.createdAt).Seconds()), "s)")
@@ -576,4 +575,18 @@ func (s *Box) Endpoint() adapter.EndpointManager {
 
 func (s *Box) LogFactory() log.Factory {
 	return s.logFactory
+}
+
+// closeRecoveringPanic runs closeFn and turns a panic into an error, so a
+// failed start's cleanup can never swallow the start error or claim success.
+func closeRecoveringPanic(closeFn func() error, onPanic func(any)) (err error) {
+	defer func() {
+		if v := recover(); v != nil {
+			if onPanic != nil {
+				onPanic(v)
+			}
+			err = fmt.Errorf("panic during start cleanup: %v", v)
+		}
+	}()
+	return closeFn()
 }
