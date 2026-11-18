@@ -209,12 +209,7 @@ func buildApple() {
 		"-v",
 		"-target", bindTarget,
 		"-libname=box",
-		// VilaNet: NaiveProxy (Cronet) on iOS/tvOS only. The iOS and tvOS
-		// libcronet.a carry no private Apple symbols; the macOS one does
-		// (info_plist_data.o → __kCFBundleNumericVersionKey, App Store rejection
-		// 2026-04-08), so macOS stays without it — see the shared-tag filter below.
-		// gomobile splits this value on spaces.
-		"-tags-not-macos=with_low_memory with_naive_outbound",
+		"-tags-not-macos=with_low_memory",
 	}
 	//if !withTailscale {
 	//	args = append(args, "-tags-macos="+strings.Join(memcTags, ","))
@@ -226,12 +221,14 @@ func buildApple() {
 		args = append(args, debugFlags...)
 	}
 
-	// Keep with_naive_outbound out of the tags shared by every Apple slice: the
-	// macOS libcronet.a contains private Apple API symbols
-	// (__kCFBundleNumericVersionKey, __kLSOpenOptionBackgroundLaunchKey) that
-	// cause App Store rejection. iOS/tvOS get it through -tags-not-macos above.
-	appleSharedTags := filterTags(sharedTags, "with_naive_outbound")
-	tags := append(appleSharedTags, darwinTags...)
+	// VilaNet: NaiveProxy (Cronet) on every Apple slice. The macOS libcronet.a
+	// imports private Apple symbols (__kCFBundleNumericVersionKey via
+	// info_plist_data.o; App Store rejection 2026-04-08); protocol/naive/
+	// cronet_darwin_shim.go defines the key inside the link unit so the final
+	// Mach-O has no such import. build_macos_appstore.sh still scans every binary
+	// for the private symbols and aborts the archive on a match.
+	tags := append(append([]string{}, sharedTags...), "with_naive_outbound")
+	tags = append(tags, darwinTags...)
 	//if withTailscale {
 	//	tags = append(tags, memcTags...)
 	//}
