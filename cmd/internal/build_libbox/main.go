@@ -171,6 +171,10 @@ func buildAndroid() {
 
 	// Build main variant (SDK 23)
 	mainTags := append([]string{}, sharedTags...)
+	// VilaNet: NaiveProxy outbound (Cronet, static libcronet.a per ABI) on the
+	// Android main variant only. Apple keeps it filtered (private Cronet symbols,
+	// App Store rejection); the legacy SDK 21 variant filters it below.
+	mainTags = append(mainTags, "with_naive_outbound")
 	// mainTags = append(mainTags, memcTags...)
 	if debugEnabled {
 		mainTags = append(mainTags, debugTags...)
