@@ -209,7 +209,12 @@ func buildApple() {
 		"-v",
 		"-target", bindTarget,
 		"-libname=box",
-		"-tags-not-macos=with_low_memory",
+		// VilaNet: NaiveProxy (Cronet) on iOS/tvOS only. The iOS and tvOS
+		// libcronet.a carry no private Apple symbols; the macOS one does
+		// (info_plist_data.o → __kCFBundleNumericVersionKey, App Store rejection
+		// 2026-04-08), so macOS stays without it — see the shared-tag filter below.
+		// gomobile splits this value on spaces.
+		"-tags-not-macos=with_low_memory with_naive_outbound",
 	}
 	//if !withTailscale {
 	//	args = append(args, "-tags-macos="+strings.Join(memcTags, ","))
@@ -221,11 +226,10 @@ func buildApple() {
 		args = append(args, debugFlags...)
 	}
 
-	// Remove with_naive_outbound for Apple builds — libcronet.a (Chromium/Cronet)
-	// contains private Apple API symbols (__kCFBundleNumericVersionKey,
-	// __kLSOpenOptionBackgroundLaunchKey) that cause App Store rejection.
-	// The iOS libcronet.a omits these, but the macOS variant includes them.
-	// NaiveProxy outbound is not user-facing in VilaNet, so this is safe.
+	// Keep with_naive_outbound out of the tags shared by every Apple slice: the
+	// macOS libcronet.a contains private Apple API symbols
+	// (__kCFBundleNumericVersionKey, __kLSOpenOptionBackgroundLaunchKey) that
+	// cause App Store rejection. iOS/tvOS get it through -tags-not-macos above.
 	appleSharedTags := filterTags(sharedTags, "with_naive_outbound")
 	tags := append(appleSharedTags, darwinTags...)
 	//if withTailscale {
