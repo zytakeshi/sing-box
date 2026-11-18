@@ -34,3 +34,8 @@ var ProtocolTimeouts = map[string]time.Duration{
 	ProtocolQUIC: 30 * time.Second,
 	ProtocolDTLS: 30 * time.Second,
 }
+
+// RuleSetStartTimeout bounds starting all rule-sets, including the download of
+// an uncached remote one. Without a bound, a stalled download server hung the
+// whole start.
+const RuleSetStartTimeout = 45 * time.Second

@@ -93,20 +93,7 @@ func (r *Router) Start(stage adapter.StartStage) error {
 		if len(r.ruleSets) > 0 {
 			monitor.Start("initialize rule-set")
 			cacheContext = adapter.NewHTTPStartContext(r.ctx)
-			var ruleSetStartGroup task.Group
-			for i, ruleSet := range r.ruleSets {
-				ruleSetInPlace := ruleSet
-				ruleSetStartGroup.Append0(func(ctx context.Context) error {
-					err := ruleSetInPlace.StartContext(ctx, cacheContext)
-					if err != nil {
-						return E.Cause(err, "initialize rule-set[", i, "]")
-					}
-					return nil
-				})
-			}
-			ruleSetStartGroup.Concurrency(5)
-			ruleSetStartGroup.FastFail()
-			err := ruleSetStartGroup.Run(r.ctx)
+			err := startRuleSets(r.ctx, r.ruleSets, cacheContext, C.RuleSetStartTimeout)
 			monitor.Finish()
 			if err != nil {
 				return err
@@ -225,4 +212,29 @@ func (r *Router) NeedFindProcess() bool {
 
 func (r *Router) ResetNetwork() {
 	r.dns.ResetNetwork()
+}
+
+// startRuleSets starts every rule-set, at most five at a time, and gives up
+// after [timeout]. An uncached remote rule-set is downloaded here, and the
+// download had no deadline: a server that accepts the connection and never
+// answers held the whole start for minutes. Past the deadline the start fails with "initial rule-set: ... context deadline
+// exceeded", which the client reads as a rule-set download failure and
+// retries through another download route.
+func startRuleSets(ctx context.Context, ruleSets []adapter.RuleSet, startContext *adapter.HTTPStartContext, timeout time.Duration) error {
+	startCtx, cancel := context.WithTimeout(ctx, timeout)
+	defer cancel()
+	var ruleSetStartGroup task.Group
+	for i, ruleSet := range ruleSets {
+		ruleSetInPlace := ruleSet
+		ruleSetStartGroup.Append0(func(ctx context.Context) error {
+			err := ruleSetInPlace.StartContext(ctx, startContext)
+			if err != nil {
+				return E.Cause(err, "initialize rule-set[", i, "]")
+			}
+			return nil
+		})
+	}
+	ruleSetStartGroup.Concurrency(5)
+	ruleSetStartGroup.FastFail()
+	return ruleSetStartGroup.Run(startCtx)
 }
