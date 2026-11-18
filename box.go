@@ -50,6 +50,11 @@ type Box struct {
 	router          *route.Router
 	internalService []adapter.LifecycleService
 	done            chan struct{}
+	// startCleanupErr is the result of the Close that a failed PreStart or
+	// Start ran on its own. Kept so an embedder that owns the instance can
+	// tell a clean failed start from one whose cleanup failed, instead of
+	// calling Close again and getting os.ErrClosed.
+	startCleanupErr error
 }
 
 type Options struct {
@@ -413,7 +418,7 @@ func (s *Box) PreStart() error {
 				panic("panic on early close: " + fmt.Sprint(v))
 			}
 		}()
-		s.Close()
+		s.startCleanupErr = s.Close()
 		return err
 	}
 	s.logger.Info("sing-box pre-started (", F.Seconds(time.Since(s.createdAt).Seconds()), "s)")
@@ -432,7 +437,7 @@ func (s *Box) Start() error {
 				println("panic on early start: " + fmt.Sprint(v))
 			}
 		}()
-		s.Close()
+		s.startCleanupErr = s.Close()
 		return err
 	}
 	s.logger.Info("sing-box started (", F.Seconds(time.Since(s.createdAt).Seconds()), "s)")
@@ -492,6 +497,13 @@ func (s *Box) start() error {
 		return err
 	}
 	return nil
+}
+
+// StartCleanupError returns the result of the Close that a failed PreStart
+// or Start already ran. nil after a successful start, or when that cleanup
+// closed everything.
+func (s *Box) StartCleanupError() error {
+	return s.startCleanupErr
 }
 
 func (s *Box) Close() error {
