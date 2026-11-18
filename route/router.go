@@ -236,5 +236,11 @@ func startRuleSets(ctx context.Context, ruleSets []adapter.RuleSet, startContext
 	}
 	ruleSetStartGroup.Concurrency(5)
 	ruleSetStartGroup.FastFail()
-	return ruleSetStartGroup.Run(startCtx)
+	err := ruleSetStartGroup.Run(startCtx)
+	if err != nil {
+		// task.Group can return the bare context error on cancellation;
+		// keep the rule-set provenance so a client can classify it.
+		return E.Cause(err, "initialize rule-set group")
+	}
+	return nil
 }

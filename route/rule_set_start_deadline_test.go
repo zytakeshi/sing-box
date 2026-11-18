@@ -3,6 +3,7 @@ package route
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 	"time"
 
@@ -39,6 +40,14 @@ func TestStartRuleSetsGivesUpOnAStalledDownload(t *testing.T) {
 	case err := <-done:
 		if !errors.Is(err, context.DeadlineExceeded) {
 			t.Fatalf("want a deadline error the client can classify, got %v", err)
+		}
+		// Clients classify the start error by its text (VilaNet needs
+		// "rule-set" together with the deadline), whichever branch of
+		// task.Group produced it.
+		message := err.Error()
+		if !strings.Contains(message, "initialize rule-set") ||
+			!strings.Contains(message, "context deadline exceeded") {
+			t.Fatalf("start error lost its rule-set provenance: %q", message)
 		}
 	case <-time.After(5 * time.Second):
 		t.Fatal("rule-set start did not end on a stalled download")
