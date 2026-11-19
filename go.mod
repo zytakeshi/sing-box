@@ -177,3 +177,8 @@ require (
 // VilaNet fork patch #4 (#554): sing-tun v0.8.15 vendored verbatim so the
 // gvisor Attach(nil) fix (upstream sing-tun be4ce8d32) can ride the 1.13.x core.
 replace github.com/sagernet/sing-tun => ./third_party/sing-tun
+
+// VilaNet fork patch #5: x/sys >= v0.42 runs MRS (getisar0) on Android when
+// auxv is unreadable -> SIGILL on some devices; keep v0.41 behaviour
+// (setMinimalFeatures on android). Gate: cmd/internal/build_libbox/xsys_cpu_test.go.
+replace golang.org/x/sys => golang.org/x/sys v0.41.0
