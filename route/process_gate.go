@@ -91,21 +91,25 @@ const processNameGatePositiveTTL = time.Second
 
 // scanGate answers Active from a process-list scan.
 //
-// It never answers "closed" from a scan older than the call: a "closed"
-// answer needs a scan that STARTED after the call began, so a listed program
-// that started just before its first connection is always seen. Concurrent
-// callers share one scan, so a connection storm costs at most one process
-// snapshot at a time, never one TCP-table dump per connection. A failed scan
-// opens the gate (every connection is looked up, the old behaviour) and is
-// logged once per failure streak.
+// A "closed" answer always comes from a scan that STARTED after the call
+// began. Freshness is counted in scan generations, not clock readings: two
+// calls can read the same clock tick, so a time compare could reuse a scan
+// that started before the call. Callers that arrive while a scan runs share
+// the next scan, so a connection storm costs at most one process snapshot at
+// a time, never one TCP-table dump per connection. Only a positive result is
+// reused by time (a lookup is authoritative anyway). A failed scan opens the
+// gate (every connection is looked up, the old behaviour) and is logged once
+// per failure streak.
 type scanGate struct {
 	scan   func() (bool, error)
 	logger log.ContextLogger
 	now    func() time.Time
 
-	access     sync.Mutex
-	done       *sync.Cond
-	scanning   bool
+	access    sync.Mutex
+	done      *sync.Cond
+	scanning  bool
+	completed uint64 // scans finished so far
+	// The last completed scan: when it started and what it found.
 	lastStart  time.Time
 	lastActive bool
 	failed     bool
@@ -118,18 +122,18 @@ func newScanGate(scan func() (bool, error), logger log.ContextLogger) *scanGate 
 }
 
 func (g *scanGate) Active() bool {
-	arrival := g.now()
 	g.access.Lock()
 	defer g.access.Unlock()
-	for {
-		if !g.lastStart.IsZero() {
-			if g.lastActive && arrival.Sub(g.lastStart) < processNameGatePositiveTTL {
-				return true
-			}
-			if !g.lastStart.Before(arrival) {
-				return g.lastActive
-			}
-		}
+	if g.completed > 0 && g.lastActive && g.now().Sub(g.lastStart) < processNameGatePositiveTTL {
+		return true
+	}
+	// The first scan that starts after this point: the next one, or the one
+	// after the scan that is running now (it started before this call).
+	need := g.completed + 1
+	if g.scanning {
+		need++
+	}
+	for g.completed < need {
 		if g.scanning {
 			g.done.Wait()
 			continue
@@ -152,8 +156,10 @@ func (g *scanGate) Active() bool {
 			}
 			g.failed = false
 		}
+		g.completed++
 		g.lastStart = start
 		g.lastActive = active
 		g.done.Broadcast()
 	}
+	return g.lastActive
 }
