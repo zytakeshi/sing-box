@@ -3,9 +3,11 @@
 package route
 
 import (
+	"errors"
 	"os"
 	"path/filepath"
 	"strings"
+	"syscall"
 
 	"github.com/sagernet/sing-box/log"
 	E "github.com/sagernet/sing/common/exceptions"
@@ -19,15 +21,18 @@ import (
 // The process_name rule matches filepath.Base of readlink /proc/<pid>/exe,
 // the value the searcher reads (searcher_linux_shared.go), so the scan reads
 // the same link (comm can differ: prctl PR_SET_NAME, 15-byte cut). A pid
-// whose link cannot be read is skipped: the searcher cannot read it either,
-// so the rule cannot match that process.
+// whose link cannot be read for a stable reason is skipped: gone or a kernel
+// thread (ENOENT/ESRCH) or access denied (EACCES/EPERM) - the searcher gets
+// the same error, so the rule cannot match that process. Any other error
+// fails the scan, and the gate opens.
 
 type linuxProcessNameGate struct {
-	names map[string]struct{} // lower-case rule names
+	names    map[string]struct{} // lower-case rule names
+	readlink func(string) (string, error)
 }
 
 func newProcessNameGate(names []string, logger log.ContextLogger) processNameGate {
-	return newScanGate((&linuxProcessNameGate{names: lowerNameSet(names)}).scan, logger)
+	return newScanGate((&linuxProcessNameGate{names: lowerNameSet(names), readlink: os.Readlink}).scan, logger)
 }
 
 func (g *linuxProcessNameGate) scan() (bool, error) {
@@ -40,12 +45,17 @@ func (g *linuxProcessNameGate) scan() (bool, error) {
 		if name == "" || name[0] < '0' || name[0] > '9' {
 			continue
 		}
-		exe, err := os.Readlink(filepath.Join("/proc", name, "exe"))
-		if err != nil {
-			continue // exited, a kernel thread, or not readable for the searcher either
-		}
-		if g.matches(filepath.Base(exe)) {
-			return true, nil
+		exe, err := g.readlink(filepath.Join("/proc", name, "exe"))
+		switch {
+		case err == nil:
+			if g.matches(filepath.Base(exe)) {
+				return true, nil
+			}
+		case errors.Is(err, syscall.ENOENT), errors.Is(err, syscall.ESRCH),
+			errors.Is(err, syscall.EACCES), errors.Is(err, syscall.EPERM):
+			// stable: the searcher cannot read this process either
+		default:
+			return false, E.Cause(err, "readlink ", name, "/exe")
 		}
 	}
 	return false, nil

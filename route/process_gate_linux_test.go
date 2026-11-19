@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"syscall"
 	"testing"
 	"time"
 )
@@ -17,10 +18,10 @@ func TestLinuxProcessNameGateScan(t *testing.T) {
 		t.Fatal("Linux must build a process gate")
 	}
 	self := filepath.Base(os.Args[0]) // e.g. route.test
-	if ok, err := (&linuxProcessNameGate{names: lowerNameSet([]string{"no-such-program-zz", self})}).scan(); err != nil || !ok {
+	if ok, err := (&linuxProcessNameGate{names: lowerNameSet([]string{"no-such-program-zz", self}), readlink: os.Readlink}).scan(); err != nil || !ok {
 		t.Fatalf("the scan must see this test process %q (ok=%v err=%v)", self, ok, err)
 	}
-	if ok, err := (&linuxProcessNameGate{names: lowerNameSet([]string{"no-such-program-zz"})}).scan(); err != nil || ok {
+	if ok, err := (&linuxProcessNameGate{names: lowerNameSet([]string{"no-such-program-zz"}), readlink: os.Readlink}).scan(); err != nil || ok {
 		t.Fatalf("the scan must not see an absent program (ok=%v err=%v)", ok, err)
 	}
 }
@@ -45,7 +46,7 @@ func TestLinuxScanUsesTheExecutableNotComm(t *testing.T) {
 	}
 	defer func() { _ = cmd.Process.Kill(); _ = cmd.Wait() }()
 	deadline := time.Now().Add(5 * time.Second)
-	gate := &linuxProcessNameGate{names: lowerNameSet([]string{long})}
+	gate := &linuxProcessNameGate{names: lowerNameSet([]string{long}), readlink: os.Readlink}
 	for {
 		ok, err := gate.scan()
 		if err != nil {
@@ -58,6 +59,26 @@ func TestLinuxScanUsesTheExecutableNotComm(t *testing.T) {
 			t.Fatal("the scan must match the full executable name (comm is cut to 15 bytes)")
 		}
 		time.Sleep(50 * time.Millisecond)
+	}
+}
+
+// A link error the searcher would not also get must fail the scan (the gate
+// then opens); stable errors are skipped.
+func TestLinuxScanErrors(t *testing.T) {
+	for _, tc := range []struct {
+		err     error
+		wantErr bool
+	}{
+		{syscall.ENOENT, false}, {syscall.ESRCH, false}, {syscall.EACCES, false}, {syscall.EPERM, false},
+		{syscall.EIO, true}, {syscall.ENOMEM, true},
+	} {
+		g := &linuxProcessNameGate{names: lowerNameSet([]string{"zz"}), readlink: func(p string) (string, error) {
+			return "", &os.PathError{Op: "readlink", Path: p, Err: tc.err}
+		}}
+		ok, err := g.scan()
+		if ok || (err != nil) != tc.wantErr {
+			t.Errorf("errno %v: ok=%v err=%v, want error=%v", tc.err, ok, err, tc.wantErr)
+		}
 	}
 }
 

@@ -23,16 +23,21 @@ import (
 // The process_name rule matches filepath.Base of the path that
 // FindDarwinConnectionOwner reads with proc_pidpath, so the scan reads the
 // same value with the same call (p_comm can differ: a symlinked or renamed
-// executable). A pid whose path the call cannot read is skipped: the searcher
-// cannot read it either, so the rule cannot match that process. Measured
-// inside the App Sandbox: 766 processes, all calls allowed, 1.6 ms per scan.
+// executable). A pid whose path the call cannot read for a stable reason is
+// skipped: the process is gone (ESRCH), its executable has no path any more
+// (ENOENT: deleted or replaced while running), or access is denied
+// (EPERM/EACCES) - the searcher gets the same error, so the rule cannot match
+// that process. Any other error fails the scan, and the gate opens.
+// Measured inside the App Sandbox: 766 processes, all calls allowed, 1.6 ms
+// per scan; on a desktop 3 ENOENT + 2 ESRCH of 781.
 
 type darwinProcessNameGate struct {
 	names map[string]struct{} // lower-case rule names
+	path  func(pid int32, buf []byte) (string, error)
 }
 
 func newProcessNameGate(names []string, logger log.ContextLogger) processNameGate {
-	return newScanGate((&darwinProcessNameGate{names: lowerNameSet(names)}).scan, logger)
+	return newScanGate((&darwinProcessNameGate{names: lowerNameSet(names), path: darwinProcessPath}).scan, logger)
 }
 
 func (d *darwinProcessNameGate) scan() (bool, error) {
@@ -46,9 +51,16 @@ func (d *darwinProcessNameGate) scan() (bool, error) {
 		if pid <= 0 {
 			continue
 		}
-		path, ok := darwinProcessPath(pid, buf)
-		if ok && d.matches(filepath.Base(path)) {
-			return true, nil
+		path, err := d.path(pid, buf)
+		switch err {
+		case nil:
+			if d.matches(filepath.Base(path)) {
+				return true, nil
+			}
+		case syscall.ESRCH, syscall.ENOENT, syscall.EPERM, syscall.EACCES:
+			// stable: the searcher cannot read this process either
+		default:
+			return false, E.Cause(err, "proc_pidpath ", pid)
 		}
 	}
 	return false, nil
@@ -67,7 +79,7 @@ const darwinProcPathSize = 4096 // PROC_PIDPATHINFO_MAXSIZE
 
 // darwinProcessPath is proc_pidpath, the call of getExecPathFromPID in
 // common/process (searcher_darwin_shared.go).
-func darwinProcessPath(pid int32, buf []byte) (string, bool) {
+func darwinProcessPath(pid int32, buf []byte) (string, error) {
 	const (
 		procCallPIDInfo = 0x2
 		procPIDPathInfo = 0xb
@@ -75,7 +87,7 @@ func darwinProcessPath(pid int32, buf []byte) (string, bool) {
 	_, _, errno := syscall.Syscall6(syscall.SYS_PROC_INFO, procCallPIDInfo, uintptr(pid), procPIDPathInfo, 0,
 		uintptr(unsafe.Pointer(&buf[0])), uintptr(len(buf)))
 	if errno != 0 {
-		return "", false
+		return "", errno
 	}
-	return unix.ByteSliceToString(buf), true
+	return unix.ByteSliceToString(buf), nil
 }
