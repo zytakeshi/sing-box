@@ -2,6 +2,11 @@ package route
 
 import (
 	"strings"
+	"sync"
+	"time"
+
+	"github.com/sagernet/sing-box/log"
+	E "github.com/sagernet/sing/common/exceptions"
 
 	C "github.com/sagernet/sing-box/constant"
 	"github.com/sagernet/sing-box/option"
@@ -59,6 +64,13 @@ func processNameGateNames(rules []option.Rule, dnsRules []option.DNSRule) (names
 	}
 	walk(rules)
 	walkDNS(dnsRules)
+	for _, name := range names {
+		// The Windows searcher names PID 0/4 ":System Idle Process" / ":System";
+		// no process snapshot carries those names, so the gate cannot answer.
+		if strings.HasPrefix(name, ":") {
+			ok = false
+		}
+	}
 	return names, ok
 }
 
@@ -71,4 +83,77 @@ func lowerNameSet(names []string) map[string]struct{} {
 		set[strings.ToLower(name)] = struct{}{}
 	}
 	return set
+}
+
+// A scan that found a listed program keeps the gate open this long: a lookup
+// is authoritative anyway, so a stale "open" only costs some lookups.
+const processNameGatePositiveTTL = time.Second
+
+// scanGate answers Active from a process-list scan.
+//
+// It never answers "closed" from a scan older than the call: a "closed"
+// answer needs a scan that STARTED after the call began, so a listed program
+// that started just before its first connection is always seen. Concurrent
+// callers share one scan, so a connection storm costs at most one process
+// snapshot at a time, never one TCP-table dump per connection. A failed scan
+// opens the gate (every connection is looked up, the old behaviour) and is
+// logged once per failure streak.
+type scanGate struct {
+	scan   func() (bool, error)
+	logger log.ContextLogger
+	now    func() time.Time
+
+	access     sync.Mutex
+	done       *sync.Cond
+	scanning   bool
+	lastStart  time.Time
+	lastActive bool
+	failed     bool
+}
+
+func newScanGate(scan func() (bool, error), logger log.ContextLogger) *scanGate {
+	g := &scanGate{scan: scan, logger: logger, now: time.Now}
+	g.done = sync.NewCond(&g.access)
+	return g
+}
+
+func (g *scanGate) Active() bool {
+	arrival := g.now()
+	g.access.Lock()
+	defer g.access.Unlock()
+	for {
+		if !g.lastStart.IsZero() {
+			if g.lastActive && arrival.Sub(g.lastStart) < processNameGatePositiveTTL {
+				return true
+			}
+			if !g.lastStart.Before(arrival) {
+				return g.lastActive
+			}
+		}
+		if g.scanning {
+			g.done.Wait()
+			continue
+		}
+		g.scanning = true
+		start := g.now()
+		g.access.Unlock()
+		active, err := g.scan()
+		g.access.Lock()
+		g.scanning = false
+		if err != nil {
+			if !g.failed && g.logger != nil {
+				g.logger.Warn(E.Cause(err, "process gate: scan the process list (every connection is looked up until a scan works)"))
+			}
+			g.failed = true
+			active = true
+		} else if g.failed {
+			if g.logger != nil {
+				g.logger.Info("process gate: process list scan works again")
+			}
+			g.failed = false
+		}
+		g.lastStart = start
+		g.lastActive = active
+		g.done.Broadcast()
+	}
 }
