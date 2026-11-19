@@ -156,32 +156,7 @@ func (r *Router) Start(stage adapter.StartStage) error {
 				}
 			}
 		}
-		if r.processSearcher != nil && r.processGateOK && len(r.processGateNames) > 0 {
-			r.processGate = newProcessNameGate(r.processGateNames, r.logger)
-			if r.processGate != nil {
-				// A rule-set update can add process rules the gate cannot answer
-				// for: turn the gate off for good. Rule-sets publish their rules
-				// before they call back, so connections routed in between may
-				// still be gated once.
-				disableForProcessRules := func(ruleSet adapter.RuleSet) {
-					if ruleSet.Metadata().ContainsProcessRule && !r.processGateOff.Swap(true) {
-						r.logger.Info("process gate: off (a rule-set now holds a process rule)")
-					}
-				}
-				for _, ruleSet := range r.ruleSets {
-					// Subscribe first, then look once: a reload that published
-					// before the subscription is seen by the look, one after it
-					// by the callback.
-					ruleSet.RegisterCallback(disableForProcessRules)
-					disableForProcessRules(ruleSet)
-				}
-			}
-		}
-		if r.processSearcher != nil {
-			processCache := common.Must1(freelru.NewSharded[processCacheKey, processCacheEntry](256, maphash.NewHasher[processCacheKey]().Hash32))
-			processCache.SetLifetime(200 * time.Millisecond)
-			r.processCache = processCache
-		}
+		r.setupProcessLookup()
 	case adapter.StartStatePostStart:
 		for i, rule := range r.rules {
 			monitor.Start("initialize rule[", i, "]")
@@ -256,4 +231,36 @@ func (r *Router) NeedFindProcess() bool {
 
 func (r *Router) ResetNetwork() {
 	r.dns.ResetNetwork()
+}
+
+// setupProcessLookup creates the process gate and the lookup cache once the
+// searcher exists. A separate method so the no-regression test
+// (process_gate_cost_test.go) drives the same code as Start.
+func (r *Router) setupProcessLookup() {
+	if r.processSearcher != nil && r.processGateOK && len(r.processGateNames) > 0 {
+		r.processGate = processNameGateFactory(r.processGateNames, r.logger)
+		if r.processGate != nil {
+			// A rule-set update can add process rules the gate cannot answer
+			// for: turn the gate off for good. Rule-sets publish their rules
+			// before they call back, so connections routed in between may
+			// still be gated once.
+			disableForProcessRules := func(ruleSet adapter.RuleSet) {
+				if ruleSet.Metadata().ContainsProcessRule && !r.processGateOff.Swap(true) {
+					r.logger.Info("process gate: off (a rule-set now holds a process rule)")
+				}
+			}
+			for _, ruleSet := range r.ruleSets {
+				// Subscribe first, then look once: a reload that published
+				// before the subscription is seen by the look, one after it
+				// by the callback.
+				ruleSet.RegisterCallback(disableForProcessRules)
+				disableForProcessRules(ruleSet)
+			}
+		}
+	}
+	if r.processSearcher != nil {
+		processCache := common.Must1(freelru.NewSharded[processCacheKey, processCacheEntry](256, maphash.NewHasher[processCacheKey]().Hash32))
+		processCache.SetLifetime(200 * time.Millisecond)
+		r.processCache = processCache
+	}
 }
