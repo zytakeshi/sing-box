@@ -89,17 +89,25 @@ func lowerNameSet(names []string) map[string]struct{} {
 // is authoritative anyway, so a stale "open" only costs some lookups.
 const processNameGatePositiveTTL = time.Second
 
+// A scan that found NO listed program answers "closed" for this long.
+// Deliberate, measured trade-off (VilaNet tickets 20279/20280, decided by the
+// VilaNet coordinator): a fresh process snapshot per connection costs ~10 ms
+// CPU and ~6x the core CPU of a run without the rule; reusing a negative scan
+// for 1 s costs ~1.0-1.2x. The price: connections that a listed program opens
+// within 1 s after it starts are not process-matched (VilaNet's
+// protocol=bittorrent sniff rule and server-side enforcement still apply).
+var processNameGateNegativeTTL = time.Second
+
 // scanGate answers Active from a process-list scan.
 //
-// A "closed" answer always comes from a scan that STARTED after the call
-// began. Freshness is counted in scan generations, not clock readings: two
-// calls can read the same clock tick, so a time compare could reuse a scan
-// that started before the call. Callers that arrive while a scan runs share
-// the next scan, so a connection storm costs at most one process snapshot at
-// a time, never one TCP-table dump per connection. Only a positive result is
-// reused by time (a lookup is authoritative anyway). A failed scan opens the
-// gate (every connection is looked up, the old behaviour) and is logged once
-// per failure streak.
+// A "closed" answer comes from a scan that started at most
+// processNameGateNegativeTTL before the call. With the window set to 0 it
+// must come from a scan that STARTED after the call; that case counts scan
+// generations, not clock readings, because two calls can read the same clock
+// tick. Callers that arrive while a scan runs share a scan, so a connection
+// storm costs at most one process snapshot at a time, never one TCP-table
+// dump per connection. A failed scan opens the gate (every connection is
+// looked up, the old behaviour) and is logged once per failure streak.
 type scanGate struct {
 	scan   func() (bool, error)
 	logger log.ContextLogger
@@ -124,13 +132,20 @@ func newScanGate(scan func() (bool, error), logger log.ContextLogger) *scanGate 
 func (g *scanGate) Active() bool {
 	g.access.Lock()
 	defer g.access.Unlock()
-	if g.completed > 0 && g.lastActive && g.now().Sub(g.lastStart) < processNameGatePositiveTTL {
-		return true
+	if g.completed > 0 {
+		age := g.now().Sub(g.lastStart)
+		if g.lastActive && age < processNameGatePositiveTTL {
+			return true
+		}
+		if !g.lastActive && age < processNameGateNegativeTTL {
+			return false
+		}
 	}
-	// The first scan that starts after this point: the next one, or the one
-	// after the scan that is running now (it started before this call).
+	// Without a reuse window the answer needs a scan that starts after this
+	// point; a scan already running started before this call. With a window,
+	// the running scan is recent enough.
 	need := g.completed + 1
-	if g.scanning {
+	if g.scanning && processNameGateNegativeTTL <= 0 {
 		need++
 	}
 	for g.completed < need {
