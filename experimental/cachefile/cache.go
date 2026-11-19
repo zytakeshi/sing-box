@@ -47,6 +47,9 @@ type CacheFile struct {
 	DB                 *bbolt.DB
 	resetAccess        sync.Mutex
 	closed             bool
+	dbPath             string // file of the open handle: path, or path+recoveredSuffix after an abandoned handle
+	reopenPending      bool   // the last reopen failed; retry at reopenAt
+	reopenAt           time.Time
 	saveMetadataAccess sync.Mutex
 	saveMetadata       *adapter.FakeIPMetadata
 	saveMetadataTimer  *time.Timer
@@ -163,6 +166,10 @@ func (c *CacheFile) Start(stage adapter.StartStage) error {
 		return err
 	}
 	c.DB = db
+	c.dbPath = c.path
+	// A side file from an abandoned handle of an earlier session is cache
+	// data only.
+	_ = os.Remove(c.path + recoveredSuffix)
 	return nil
 }
 
@@ -173,7 +180,35 @@ func (c *CacheFile) Close() error {
 	if c.DB == nil {
 		return nil
 	}
-	return c.DB.Close()
+	return closeWithDeadline(c.DB, cacheCloseDeadline)
+}
+
+// Overridable in tests.
+var (
+	// bbolt's Close waits for the writer lock. A transaction that panicked
+	// during its start (a file corrupted while open) never releases it, so a
+	// plain Close would hang the caller for good.
+	cacheCloseDeadline = 2 * time.Second
+	// After a failed reopen, the next cache access retries no sooner than this.
+	cacheReopenInterval = 5 * time.Second
+)
+
+// recoveredSuffix names the side file used for the rest of a session when
+// the broken handle could not be closed: it still holds the original file
+// open and locked.
+const recoveredSuffix = ".recovered"
+
+var errCloseTimeout = E.New("close timed out (a failed transaction still holds the writer lock); handle abandoned")
+
+func closeWithDeadline(db *bbolt.DB, deadline time.Duration) error {
+	done := make(chan error, 1)
+	go func() { done <- db.Close() }()
+	select {
+	case err := <-done:
+		return err
+	case <-time.After(deadline):
+		return errCloseTimeout
+	}
 }
 
 func (c *CacheFile) view(fn func(tx *bbolt.Tx) error) (err error) {
@@ -218,6 +253,9 @@ func (c *CacheFile) update(fn func(tx *bbolt.Tx) error) (err error) {
 func (c *CacheFile) currentDB() *bbolt.DB {
 	c.resetAccess.Lock()
 	defer c.resetAccess.Unlock()
+	if c.reopenPending && !c.closed && !time.Now().Before(c.reopenAt) {
+		_ = c.openLocked(c.dbPath)
+	}
 	return c.DB
 }
 
@@ -245,19 +283,44 @@ func (c *CacheFile) resetDB() {
 
 func (c *CacheFile) resetDBLocked() error {
 	var errs []error
-	if err := c.DB.Close(); err != nil {
-		errs = append(errs, E.Cause(err, "close corrupted cache"))
+	path := c.dbPath
+	if path == "" {
+		path = c.path
 	}
-	if err := os.Remove(c.path); err != nil && !os.IsNotExist(err) {
+	if c.reopenPending {
+		// The handle is already closed; only the reopen is owed.
+	} else if err := closeWithDeadline(c.DB, cacheCloseDeadline); err != nil {
+		errs = append(errs, E.Cause(err, "close corrupted cache"))
+		if errors.Is(err, errCloseTimeout) {
+			path = c.path + recoveredSuffix
+		}
+	}
+	if err := c.openLocked(path); err != nil {
+		errs = append(errs, err)
+	}
+	return errors.Join(errs...)
+}
+
+// openLocked drops the cache file at path and opens a new one there. On
+// failure the handle stays closed and the next access retries after
+// cacheReopenInterval, instead of failing with a closed handle until restart.
+func (c *CacheFile) openLocked(path string) error {
+	var errs []error
+	if err := os.Remove(path); err != nil && !os.IsNotExist(err) {
 		errs = append(errs, E.Cause(err, "remove corrupted cache"))
 	}
-	db, err := bbolt.Open(c.path, 0o666, &bbolt.Options{Timeout: time.Second})
+	db, err := bbolt.Open(path, 0o666, &bbolt.Options{Timeout: time.Second})
 	if err != nil {
-		errs = append(errs, E.Cause(err, "reopen cache"))
+		c.dbPath = path
+		c.reopenPending = true
+		c.reopenAt = time.Now().Add(cacheReopenInterval)
+		errs = append(errs, E.Cause(err, "reopen cache (retry after ", cacheReopenInterval, ")"))
 		return errors.Join(errs...)
 	}
-	_ = filemanager.Chown(c.ctx, c.path)
+	_ = filemanager.Chown(c.ctx, path)
 	c.DB = db
+	c.dbPath = path
+	c.reopenPending = false
 	return errors.Join(errs...)
 }
 

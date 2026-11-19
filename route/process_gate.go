@@ -120,6 +120,7 @@ type scanGate struct {
 	access    sync.Mutex
 	done      *sync.Cond
 	scanning  bool
+	waiting   int    // callers parked on done (tests wait for it)
 	completed uint64 // scans finished so far
 	// The last completed scan: when it started and what it found.
 	lastStart  time.Time
@@ -154,7 +155,9 @@ func (g *scanGate) Active() bool {
 	}
 	for g.completed < need {
 		if g.scanning {
+			g.waiting++
 			g.done.Wait()
+			g.waiting--
 			continue
 		}
 		g.scanning = true
@@ -179,6 +182,12 @@ func (g *scanGate) Active() bool {
 		g.lastStart = start
 		g.lastActive = active
 		g.done.Broadcast()
+	}
+	// A caller that joined a running scan can wake up after that scan's
+	// result is older than the window (a stalled scan): never answer
+	// "closed" from it; open, and let the lookup decide.
+	if !g.lastActive && processNameGateNegativeTTL > 0 && g.now().Sub(g.lastStart) >= processNameGateNegativeTTL {
+		return true
 	}
 	return g.lastActive
 }
