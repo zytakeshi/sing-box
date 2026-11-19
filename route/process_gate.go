@@ -85,6 +85,10 @@ func lowerNameSet(names []string) map[string]struct{} {
 	return set
 }
 
+// processNameGateFactory builds the gate; tests replace it with a counting
+// scanGate (the Windows factory is nil on other platforms).
+var processNameGateFactory = newProcessNameGate
+
 // A scan that found a listed program keeps the gate open this long: a lookup
 // is authoritative anyway, so a stale "open" only costs some lookups.
 const processNameGatePositiveTTL = time.Second
