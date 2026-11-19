@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"runtime"
+	"sync/atomic"
 	"time"
 
 	"github.com/sagernet/sing-box/adapter"
@@ -39,6 +40,7 @@ type Router struct {
 	ruleSetMap        map[string]adapter.RuleSet
 	processSearcher   process.Searcher
 	processGate       processNameGate
+	processGateOff    atomic.Bool
 	processGateNames  []string
 	processGateOK     bool
 	processCache      freelru.Cache[processCacheKey, processCacheEntry]
@@ -156,6 +158,19 @@ func (r *Router) Start(stage adapter.StartStage) error {
 		}
 		if r.processSearcher != nil && r.processGateOK && len(r.processGateNames) > 0 {
 			r.processGate = newProcessNameGate(r.processGateNames, r.logger)
+			if r.processGate != nil {
+				// A rule-set update can add process rules the gate cannot answer
+				// for: turn the gate off for good. Rule-sets publish their rules
+				// before they call back, so connections routed in between may
+				// still be gated once.
+				for _, ruleSet := range r.ruleSets {
+					ruleSet.RegisterCallback(func(updated adapter.RuleSet) {
+						if updated.Metadata().ContainsProcessRule && !r.processGateOff.Swap(true) {
+							r.logger.Info("process gate: off (a rule-set now holds a process rule)")
+						}
+					})
+				}
+			}
 		}
 		if r.processSearcher != nil {
 			processCache := common.Must1(freelru.NewSharded[processCacheKey, processCacheEntry](256, maphash.NewHasher[processCacheKey]().Hash32))

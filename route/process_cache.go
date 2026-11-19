@@ -39,7 +39,7 @@ func (r *Router) searchProcessInfo(ctx context.Context, metadata *adapter.Inboun
 	if r.processSearcher == nil || metadata.ProcessInfo != nil || !r.isLocalSource(metadata.Source.Addr) {
 		return
 	}
-	if r.processGate != nil && !r.processGate.Active() {
+	if r.processGate != nil && !r.processGateOff.Load() && !r.processGate.Active() {
 		return
 	}
 	var originDestination netip.AddrPort
