@@ -189,7 +189,18 @@ func (c *CacheFile) batch(fn func(tx *bbolt.Tx) error) (err error) {
 			err = E.New("database corrupted: ", r)
 		}
 	}()
-	return c.DB.Batch(fn)
+	db := c.DB
+	err = db.Batch(fn)
+	// bbolt 500ee1e84832 returns a panic of the batch transaction (Commit on a
+	// corrupted file) as PanickedError instead of killing the process. Treat it
+	// like a recovered panic: drop and recreate the cache, once per broken DB
+	// even when several batch callers get the same error.
+	var panicked bbolt.PanickedError
+	if errors.As(err, &panicked) {
+		c.resetDBIfCurrent(db)
+		return E.New("database corrupted: ", panicked.Reason)
+	}
+	return err
 }
 
 func (c *CacheFile) update(fn func(tx *bbolt.Tx) error) (err error) {
@@ -200,6 +211,15 @@ func (c *CacheFile) update(fn func(tx *bbolt.Tx) error) (err error) {
 		}
 	}()
 	return c.DB.Update(fn)
+}
+
+func (c *CacheFile) resetDBIfCurrent(db *bbolt.DB) {
+	c.resetAccess.Lock()
+	current := c.DB == db
+	c.resetAccess.Unlock()
+	if current {
+		c.resetDB()
+	}
 }
 
 func (c *CacheFile) resetDB() {

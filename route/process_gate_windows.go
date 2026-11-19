@@ -4,8 +4,6 @@ package route
 
 import (
 	"strings"
-	"sync"
-	"time"
 	"unsafe"
 
 	"github.com/sagernet/sing-box/log"
@@ -14,50 +12,13 @@ import (
 	"golang.org/x/sys/windows"
 )
 
-const processNameGateInterval = time.Second
-
 type windowsProcessNameGate struct {
-	logger    log.ContextLogger
-	names     map[string]struct{}
-	access    sync.Mutex
-	checkedAt time.Time
-	active    bool
-	failed    bool
+	names map[string]struct{}
 }
 
 func newProcessNameGate(names []string, logger log.ContextLogger) processNameGate {
-	return &windowsProcessNameGate{logger: logger, names: lowerNameSet(names)}
-}
-
-// Active scans the process list at most once per interval. A failed scan
-// opens the gate (the old behaviour: look up every connection) and is logged
-// once per failure streak.
-func (g *windowsProcessNameGate) Active() bool {
-	g.access.Lock()
-	defer g.access.Unlock()
-	now := time.Now()
-	if !g.checkedAt.IsZero() && now.Sub(g.checkedAt) < processNameGateInterval {
-		return g.active
-	}
-	g.checkedAt = now
-	active, err := g.scan()
-	if err != nil {
-		if !g.failed {
-			g.logger.Warn(E.Cause(err, "process gate: scan the process list (every connection is looked up until a scan works)"))
-		}
-		g.failed = true
-		g.active = true
-		return true
-	}
-	if g.failed {
-		g.logger.Info("process gate: process list scan works again")
-		g.failed = false
-	}
-	if active != g.active {
-		g.logger.Debug("process gate: a listed process runs = ", active)
-	}
-	g.active = active
-	return active
+	w := &windowsProcessNameGate{names: lowerNameSet(names)}
+	return newScanGate(w.scan, logger)
 }
 
 func (g *windowsProcessNameGate) scan() (bool, error) {
