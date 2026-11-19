@@ -38,6 +38,9 @@ type Router struct {
 	ruleSets          []adapter.RuleSet
 	ruleSetMap        map[string]adapter.RuleSet
 	processSearcher   process.Searcher
+	processGate       processNameGate
+	processGateNames  []string
+	processGateOK     bool
 	processCache      freelru.Cache[processCacheKey, processCacheEntry]
 	pauseManager      pause.Manager
 	trackers          []adapter.ConnectionTracker
@@ -46,7 +49,7 @@ type Router struct {
 }
 
 func NewRouter(ctx context.Context, logFactory log.Factory, options option.RouteOptions, dnsOptions option.DNSOptions) *Router {
-	return &Router{
+	router := &Router{
 		ctx:               ctx,
 		logger:            logFactory.NewLogger("router"),
 		inbound:           service.FromContext[adapter.InboundManager](ctx),
@@ -61,6 +64,9 @@ func NewRouter(ctx context.Context, logFactory log.Factory, options option.Route
 		pauseManager:      service.FromContext[pause.Manager](ctx),
 		platformInterface: service.FromContext[adapter.PlatformInterface](ctx),
 	}
+	router.processGateNames, router.processGateOK = processNameGateNames(options.Rules, dnsOptions.Rules)
+	router.processGateOK = router.processGateOK && !options.FindProcess
+	return router
 }
 
 func (r *Router) Initialize(rules []option.Rule, ruleSets []option.RuleSet) error {
@@ -108,10 +114,12 @@ func (r *Router) Start(stage adapter.StartStage) error {
 			metadata := ruleSet.Metadata()
 			if metadata.ContainsProcessRule {
 				needFindProcess = true
+				r.processGateOK = false
 			}
 		}
 		if C.IsAndroid && r.platformInterface != nil {
 			needFindProcess = true
+			r.processGateOK = false
 		}
 		r.needFindProcess = needFindProcess
 		if needFindProcess {
@@ -132,6 +140,9 @@ func (r *Router) Start(stage adapter.StartStage) error {
 					r.processSearcher = searcher
 				}
 			}
+		}
+		if r.processSearcher != nil && r.processGateOK && len(r.processGateNames) > 0 {
+			r.processGate = newProcessNameGate(r.processGateNames, r.logger)
 		}
 		if r.processSearcher != nil {
 			processCache := common.Must1(freelru.NewSharded[processCacheKey, processCacheEntry](256, maphash.NewHasher[processCacheKey]().Hash32))
