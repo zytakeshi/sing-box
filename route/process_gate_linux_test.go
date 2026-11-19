@@ -4,36 +4,66 @@ package route
 
 import (
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 // Gate 1 for Linux: the real factory gives a gate, and the real /proc scan
-// sees a running program by its comm and does not see an absent one.
+// sees a running program by its executable name and does not see an absent one.
 func TestLinuxProcessNameGateScan(t *testing.T) {
 	if g := newProcessNameGate([]string{"qbittorrent"}, nil); g == nil {
 		t.Fatal("Linux must build a process gate")
 	}
 	self := filepath.Base(os.Args[0]) // e.g. route.test
-	if len(self) > linuxCommLen {
-		self = self[:linuxCommLen]
-	}
-	present := &linuxProcessNameGate{names: []string{"no-such-program-zz", self}}
-	if ok, err := present.scan(); err != nil || !ok {
+	if ok, err := (&linuxProcessNameGate{names: lowerNameSet([]string{"no-such-program-zz", self})}).scan(); err != nil || !ok {
 		t.Fatalf("the scan must see this test process %q (ok=%v err=%v)", self, ok, err)
 	}
-	absent := &linuxProcessNameGate{names: []string{"no-such-program-zz"}}
-	if ok, err := absent.scan(); err != nil || ok {
+	if ok, err := (&linuxProcessNameGate{names: lowerNameSet([]string{"no-such-program-zz"})}).scan(); err != nil || ok {
 		t.Fatalf("the scan must not see an absent program (ok=%v err=%v)", ok, err)
 	}
 }
 
-func TestLinuxTruncatedCommIsASuperset(t *testing.T) {
-	g := &linuxProcessNameGate{names: []string{"transmission-daemon"}}
-	if !g.matches("transmission-da") { // comm keeps 15 characters
-		t.Fatal("a truncated comm must match the full rule name")
+// comm is the name at exec (cut to 15 bytes) and a program can change it;
+// the rule and the searcher read /proc/<pid>/exe. A program with a long
+// name (comm cut) must match by its full executable name.
+func TestLinuxScanUsesTheExecutableNotComm(t *testing.T) {
+	dir := t.TempDir()
+	data, err := os.ReadFile(os.Args[0])
+	if err != nil {
+		t.Fatal(err)
 	}
-	if g.matches("transmission") || g.matches("") {
-		t.Fatal("a short different name must not match")
+	long := "zzlongbittorrentclientname" // 26 bytes: comm keeps 15
+	if err := os.WriteFile(filepath.Join(dir, long), data, 0o755); err != nil {
+		t.Fatal(err)
 	}
+	cmd := exec.Command(filepath.Join(dir, long), "-test.run=^TestLinuxHelperSleep$")
+	cmd.Env = append(os.Environ(), "ZZ_PROCESS_GATE_HELPER=1")
+	if err := cmd.Start(); err != nil {
+		t.Fatal(err)
+	}
+	defer func() { _ = cmd.Process.Kill(); _ = cmd.Wait() }()
+	deadline := time.Now().Add(5 * time.Second)
+	gate := &linuxProcessNameGate{names: lowerNameSet([]string{long})}
+	for {
+		ok, err := gate.scan()
+		if err != nil {
+			t.Fatal(err)
+		}
+		if ok {
+			return
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the scan must match the full executable name (comm is cut to 15 bytes)")
+		}
+		time.Sleep(50 * time.Millisecond)
+	}
+}
+
+func TestLinuxHelperSleep(t *testing.T) {
+	if os.Getenv("ZZ_PROCESS_GATE_HELPER") != "1" {
+		t.Skip("helper process only")
+	}
+	time.Sleep(30 * time.Second)
 }
