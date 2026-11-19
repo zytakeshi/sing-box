@@ -74,28 +74,64 @@ func TestScanGateFailedScanOpens(t *testing.T) {
 	}
 }
 
-func TestScanGateSharesOneScanAcrossConcurrentCallers(t *testing.T) {
+func TestScanGateSharesScansAndNeverRunsTwoAtOnce(t *testing.T) {
 	var mu sync.Mutex
-	scans := 0
+	scans, inFlight, maxInFlight := 0, 0, 0
 	release := make(chan struct{})
+	started := make(chan struct{}, 64)
 	g := newScanGate(func() (bool, error) {
 		mu.Lock()
 		scans++
+		inFlight++
+		if inFlight > maxInFlight {
+			maxInFlight = inFlight
+		}
 		mu.Unlock()
+		started <- struct{}{}
 		<-release
+		mu.Lock()
+		inFlight--
+		mu.Unlock()
 		return false, nil
 	}, nil)
 	var wg sync.WaitGroup
-	go func() { time.Sleep(50 * time.Millisecond); close(release) }()
+	wg.Add(1)
+	go func() { defer wg.Done(); g.Active() }()
+	<-started // scan 1 runs; the next 20 callers arrive after it started
 	for i := 0; i < 20; i++ {
 		wg.Add(1)
 		go func() { defer wg.Done(); g.Active() }()
 	}
+	time.Sleep(20 * time.Millisecond)
+	close(release)
 	wg.Wait()
-	// Callers that arrived while the first scan ran need one more scan that
-	// started after them; never one scan per caller.
-	if scans > 2 {
-		t.Fatalf("scans=%d for 20 concurrent callers, want <= 2", scans)
+	if maxInFlight != 1 {
+		t.Fatalf("max concurrent scans = %d, want 1", maxInFlight)
+	}
+	// Scan 1 started before the 20 callers, so they need at least one more;
+	// callers that arrive while scan 2 runs need scan 3. Never one per caller.
+	if scans < 2 || scans > 3 {
+		t.Fatalf("scans=%d for 1+20 callers, want 2..3", scans)
+	}
+}
+
+// Codex review round 2 P1: two calls can read the same clock tick. A negative
+// scan that started in the same tick as a later call must not answer for it.
+func TestScanGateEqualClockTickStillRescans(t *testing.T) {
+	tick := time.Now()
+	running := false
+	scans := 0
+	g := newScanGate(func() (bool, error) { scans++; return running, nil }, nil)
+	g.now = func() time.Time { return tick }
+	if g.Active() {
+		t.Fatal("unexpected positive")
+	}
+	running = true
+	if !g.Active() {
+		t.Fatal("reused an older negative scan read at the same clock tick")
+	}
+	if scans != 2 {
+		t.Fatalf("scans=%d, want 2", scans)
 	}
 }
 

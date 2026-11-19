@@ -39,7 +39,9 @@ func (r *Router) searchProcessInfo(ctx context.Context, metadata *adapter.Inboun
 	if r.processSearcher == nil || metadata.ProcessInfo != nil || !r.isLocalSource(metadata.Source.Addr) {
 		return
 	}
-	if r.processGate != nil && !r.processGateOff.Load() && !r.processGate.Active() {
+	// Read the off switch again after Active: a rule-set update can turn the
+	// gate off while a scan runs.
+	if r.processGate != nil && !r.processGateOff.Load() && !r.processGate.Active() && !r.processGateOff.Load() {
 		return
 	}
 	var originDestination netip.AddrPort
