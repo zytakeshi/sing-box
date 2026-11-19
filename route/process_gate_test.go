@@ -2,6 +2,7 @@ package route
 
 import (
 	"errors"
+	"runtime"
 	"sync"
 	"testing"
 	"time"
@@ -172,5 +173,43 @@ func TestScanGateNegativeTTLBoundsTheWindow(t *testing.T) {
 	now = now.Add(1001 * time.Millisecond)
 	if !g.Active() || scans != 2 {
 		t.Fatalf("after the window a rescan must see the program (scans=%d)", scans)
+	}
+}
+
+// Codex round 3 #1: a caller that joins a running scan must not get a
+// "closed" answer when that scan's result is older than the window by the
+// time it wakes (a stalled scan).
+func TestScanGateStaleJoinedScanOpens(t *testing.T) {
+	defer setNegativeTTL(time.Second)()
+	var mu sync.Mutex
+	now := time.Unix(1_800_000_000, 0)
+	clock := func() time.Time { mu.Lock(); defer mu.Unlock(); return now }
+	started := make(chan struct{})
+	release := make(chan struct{})
+	g := newScanGate(func() (bool, error) { close(started); <-release; return false, nil }, nil)
+	g.now = clock
+	first := make(chan bool, 1)
+	go func() { first <- g.Active() }()
+	<-started
+	joined := make(chan bool, 1)
+	go func() { joined <- g.Active() }()
+	for deadline := time.Now().Add(5 * time.Second); ; {
+		g.access.Lock()
+		w := g.waiting
+		g.access.Unlock()
+		if w == 1 {
+			break // the second caller is parked on the running scan
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the second caller never joined the running scan")
+		}
+		runtime.Gosched()
+	}
+	mu.Lock()
+	now = now.Add(1500 * time.Millisecond) // the scan stalls past the window
+	mu.Unlock()
+	close(release)
+	if !<-joined || !<-first {
+		t.Fatal("a negative result older than the window must open the gate")
 	}
 }
