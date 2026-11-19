@@ -2,6 +2,16 @@ module github.com/sagernet/sing-box
 
 go 1.25.0
 
+// The bbolt fix (ticket 20278) needs go >= 1.25.0; keep the go 1.24 runtime
+// defaults this core shipped with, so the only behaviour change is bbolt.
+godebug (
+	containermaxprocs=0
+	decoratemappings=0
+	tlssha1=1
+	updatemaxprocs=0
+	x509sha256skid=0
+)
+
 require (
 	github.com/anthropics/anthropic-sdk-go v1.26.0
 	github.com/anytls/sing-anytls v0.0.11
