@@ -165,3 +165,14 @@ require (
 	gopkg.in/yaml.v3 v3.0.1 // indirect
 	lukechampine.com/blake3 v1.3.0 // indirect
 )
+
+// Keep the DefaultGODEBUG of the go 1.24 main module (before the bbolt
+// 500ee1e84832 bump raised it to go 1.25): libbox and the CLI build with this
+// module as their main module.
+godebug (
+	containermaxprocs=0
+	decoratemappings=0
+	tlssha1=1
+	updatemaxprocs=0
+	x509sha256skid=0
+)
