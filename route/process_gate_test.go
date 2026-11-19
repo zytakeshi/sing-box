@@ -48,6 +48,7 @@ func TestLowerNameSetIsCaseInsensitiveSuperset(t *testing.T) {
 // Codex review P1: a program that starts after a "none running" scan must be
 // seen by its very first connection, not after the next interval.
 func TestScanGateNeverAnswersClosedFromAnOlderScan(t *testing.T) {
+	defer setNegativeTTL(0)()
 	running := false
 	scans := 0
 	g := newScanGate(func() (bool, error) { scans++; return running, nil }, nil)
@@ -75,6 +76,7 @@ func TestScanGateFailedScanOpens(t *testing.T) {
 }
 
 func TestScanGateSharesScansAndNeverRunsTwoAtOnce(t *testing.T) {
+	defer setNegativeTTL(0)()
 	var mu sync.Mutex
 	scans, inFlight, maxInFlight := 0, 0, 0
 	release := make(chan struct{})
@@ -118,6 +120,7 @@ func TestScanGateSharesScansAndNeverRunsTwoAtOnce(t *testing.T) {
 // Codex review round 2 P1: two calls can read the same clock tick. A negative
 // scan that started in the same tick as a later call must not answer for it.
 func TestScanGateEqualClockTickStillRescans(t *testing.T) {
+	defer setNegativeTTL(0)()
 	tick := time.Now()
 	running := false
 	scans := 0
@@ -143,3 +146,31 @@ func TestSyntheticProcessNamesDisableGate(t *testing.T) {
 }
 
 var errTestScan = errors.New("scan failed")
+
+func setNegativeTTL(d time.Duration) func() {
+	old := processNameGateNegativeTTL
+	processNameGateNegativeTTL = d
+	return func() { processNameGateNegativeTTL = old }
+}
+
+// The shipped setting: a negative scan answers for 1 s (measured trade-off),
+// and a rescan after that sees a program that started meanwhile.
+func TestScanGateNegativeTTLBoundsTheWindow(t *testing.T) {
+	defer setNegativeTTL(time.Second)()
+	now := time.Now()
+	running := false
+	scans := 0
+	g := newScanGate(func() (bool, error) { scans++; return running, nil }, nil)
+	g.now = func() time.Time { return now }
+	if g.Active() {
+		t.Fatal("unexpected positive")
+	}
+	running = true
+	if g.Active() || scans != 1 {
+		t.Fatalf("inside the 1 s window the negative scan is reused (scans=%d)", scans)
+	}
+	now = now.Add(1001 * time.Millisecond)
+	if !g.Active() || scans != 2 {
+		t.Fatalf("after the window a rescan must see the program (scans=%d)", scans)
+	}
+}
