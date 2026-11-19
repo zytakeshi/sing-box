@@ -46,6 +46,7 @@ type CacheFile struct {
 	rdrcTimeout        time.Duration
 	DB                 *bbolt.DB
 	resetAccess        sync.Mutex
+	closed             bool
 	saveMetadataAccess sync.Mutex
 	saveMetadata       *adapter.FakeIPMetadata
 	saveMetadataTimer  *time.Timer
@@ -166,6 +167,9 @@ func (c *CacheFile) Start(stage adapter.StartStage) error {
 }
 
 func (c *CacheFile) Close() error {
+	c.resetAccess.Lock()
+	defer c.resetAccess.Unlock()
+	c.closed = true
 	if c.DB == nil {
 		return nil
 	}
@@ -173,23 +177,22 @@ func (c *CacheFile) Close() error {
 }
 
 func (c *CacheFile) view(fn func(tx *bbolt.Tx) error) (err error) {
+	db := c.currentDB()
 	defer func() {
 		if r := recover(); r != nil {
-			c.resetDB()
-			err = E.New("database corrupted: ", r)
+			err = errors.Join(E.New("database corrupted: ", r), c.resetDBIfCurrent(db))
 		}
 	}()
-	return c.DB.View(fn)
+	return db.View(fn)
 }
 
 func (c *CacheFile) batch(fn func(tx *bbolt.Tx) error) (err error) {
+	db := c.currentDB()
 	defer func() {
 		if r := recover(); r != nil {
-			c.resetDB()
-			err = E.New("database corrupted: ", r)
+			err = errors.Join(E.New("database corrupted: ", r), c.resetDBIfCurrent(db))
 		}
 	}()
-	db := c.DB
 	err = db.Batch(fn)
 	// bbolt 500ee1e84832 returns a panic of the batch transaction (Commit on a
 	// corrupted file) as PanickedError instead of killing the process. Treat it
@@ -197,41 +200,65 @@ func (c *CacheFile) batch(fn func(tx *bbolt.Tx) error) (err error) {
 	// even when several batch callers get the same error.
 	var panicked bbolt.PanickedError
 	if errors.As(err, &panicked) {
-		c.resetDBIfCurrent(db)
-		return E.New("database corrupted: ", panicked.Reason)
+		return errors.Join(E.New("database corrupted: ", panicked.Reason), c.resetDBIfCurrent(db))
 	}
 	return err
 }
 
 func (c *CacheFile) update(fn func(tx *bbolt.Tx) error) (err error) {
+	db := c.currentDB()
 	defer func() {
 		if r := recover(); r != nil {
-			c.resetDB()
-			err = E.New("database corrupted: ", r)
+			err = errors.Join(E.New("database corrupted: ", r), c.resetDBIfCurrent(db))
 		}
 	}()
-	return c.DB.Update(fn)
+	return db.Update(fn)
 }
 
-func (c *CacheFile) resetDBIfCurrent(db *bbolt.DB) {
+func (c *CacheFile) currentDB() *bbolt.DB {
 	c.resetAccess.Lock()
-	current := c.DB == db
-	c.resetAccess.Unlock()
-	if current {
-		c.resetDB()
+	defer c.resetAccess.Unlock()
+	return c.DB
+}
+
+// resetDBIfCurrent drops and recreates the cache file only while db is still
+// the open handle: the compare and the swap happen under one lock, so a
+// second caller with the same broken handle never deletes the replacement,
+// and a closed cache is never reopened.
+func (c *CacheFile) resetDBIfCurrent(db *bbolt.DB) error {
+	c.resetAccess.Lock()
+	defer c.resetAccess.Unlock()
+	if c.closed || c.DB != db {
+		return nil
 	}
+	return c.resetDBLocked()
 }
 
 func (c *CacheFile) resetDB() {
 	c.resetAccess.Lock()
 	defer c.resetAccess.Unlock()
-	c.DB.Close()
-	os.Remove(c.path)
-	db, err := bbolt.Open(c.path, 0o666, &bbolt.Options{Timeout: time.Second})
-	if err == nil {
-		_ = filemanager.Chown(c.ctx, c.path)
-		c.DB = db
+	if c.closed {
+		return
 	}
+	_ = c.resetDBLocked()
+}
+
+func (c *CacheFile) resetDBLocked() error {
+	var errs []error
+	if err := c.DB.Close(); err != nil {
+		errs = append(errs, E.Cause(err, "close corrupted cache"))
+	}
+	if err := os.Remove(c.path); err != nil && !os.IsNotExist(err) {
+		errs = append(errs, E.Cause(err, "remove corrupted cache"))
+	}
+	db, err := bbolt.Open(c.path, 0o666, &bbolt.Options{Timeout: time.Second})
+	if err != nil {
+		errs = append(errs, E.Cause(err, "reopen cache"))
+		return errors.Join(errs...)
+	}
+	_ = filemanager.Chown(c.ctx, c.path)
+	c.DB = db
+	return errors.Join(errs...)
 }
 
 func (c *CacheFile) StoreFakeIP() bool {

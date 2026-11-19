@@ -150,12 +150,17 @@ func (r *Router) Start(stage adapter.StartStage) error {
 				// for: turn the gate off for good. Rule-sets publish their rules
 				// before they call back, so connections routed in between may
 				// still be gated once.
+				disableForProcessRules := func(ruleSet adapter.RuleSet) {
+					if ruleSet.Metadata().ContainsProcessRule && !r.processGateOff.Swap(true) {
+						r.logger.Info("process gate: off (a rule-set now holds a process rule)")
+					}
+				}
 				for _, ruleSet := range r.ruleSets {
-					ruleSet.RegisterCallback(func(updated adapter.RuleSet) {
-						if updated.Metadata().ContainsProcessRule && !r.processGateOff.Swap(true) {
-							r.logger.Info("process gate: off (a rule-set now holds a process rule)")
-						}
-					})
+					// Subscribe first, then look once: a reload that published
+					// before the subscription is seen by the look, one after it
+					// by the callback.
+					ruleSet.RegisterCallback(disableForProcessRules)
+					disableForProcessRules(ruleSet)
 				}
 			}
 		}
