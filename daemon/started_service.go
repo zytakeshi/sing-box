@@ -2,6 +2,7 @@ package daemon
 
 import (
 	"context"
+	"errors"
 	"os"
 	"runtime"
 	"sync"
@@ -50,6 +51,7 @@ type StartedService struct {
 	logSubscriber           *observable.Subscriber[*log.Entry]
 	logObserver             *observable.Observer[*log.Entry]
 	instance                *Instance
+	failedStartRolledBack   bool
 	startedAt               time.Time
 	urlTestSubscriber       *observable.Subscriber[struct{}]
 	urlTestObserver         *observable.Observer[struct{}]
@@ -115,12 +117,14 @@ func (s *StartedService) updateStatus(newStatus ServiceStatus_Type) {
 	statusObject := &ServiceStatus{Status: newStatus}
 	s.serviceStatusSubscriber.Emit(statusObject)
 	s.serviceStatus = statusObject
+	s.failedStartRolledBack = false
 }
 
-func (s *StartedService) updateStatusError(err error) error {
+func (s *StartedService) updateStatusError(err error, failedStartRolledBack bool) error {
 	statusObject := &ServiceStatus{Status: ServiceStatus_FATAL, ErrorMessage: err.Error()}
 	s.serviceStatusSubscriber.Emit(statusObject)
 	s.serviceStatus = statusObject
+	s.failedStartRolledBack = failedStartRolledBack
 	s.serviceAccess.Unlock()
 	return err
 }
@@ -184,7 +188,7 @@ func (s *StartedService) StartOrReloadService(profileContent string, options *Ov
 	s.resetLogs()
 	instance, err := s.newInstance(profileContent, options)
 	if err != nil {
-		return s.updateStatusError(err)
+		return s.updateStatusError(err, false)
 	}
 	s.instance = instance
 	instance.urlTestHistoryStorage.SetHook(s.urlTestSubscriber)
@@ -193,14 +197,18 @@ func (s *StartedService) StartOrReloadService(profileContent string, options *Ov
 		instance.clashServer.(*clashapi.Server).TrafficManager().SetEventHook(s.connectionEventSubscriber)
 	}
 	s.serviceAccess.Unlock()
-	err = instance.Start()
+	err, rollbackErr := instance.startWithRollback()
 	s.serviceAccess.Lock()
-	if s.serviceStatus.Status != ServiceStatus_STARTING {
+	if s.serviceStatus.Status != ServiceStatus_STARTING || s.instance != instance {
 		s.serviceAccess.Unlock()
 		return nil
 	}
 	if err != nil {
-		return s.updateStatusError(err)
+		if rollbackErr != nil {
+			return s.updateStatusError(errors.Join(err, E.Cause(rollbackErr, "rollback failed start")), false)
+		}
+		s.instance = nil
+		return s.updateStatusError(err, true)
 	}
 	s.startedAt = time.Now()
 	s.updateStatus(ServiceStatus_STARTED)
@@ -219,9 +227,9 @@ func (s *StartedService) Close() {
 
 func (s *StartedService) CloseService() error {
 	s.serviceAccess.Lock()
-	switch s.serviceStatus.Status {
-	case ServiceStatus_STARTING, ServiceStatus_STARTED:
-	default:
+	status := s.serviceStatus.Status
+	if status != ServiceStatus_STARTING && status != ServiceStatus_STARTED &&
+		!(status == ServiceStatus_FATAL && s.failedStartRolledBack) {
 		s.serviceAccess.Unlock()
 		return os.ErrInvalid
 	}
@@ -231,7 +239,7 @@ func (s *StartedService) CloseService() error {
 	if instance != nil {
 		err := instance.Close()
 		if err != nil {
-			return s.updateStatusError(err)
+			return s.updateStatusError(err, false)
 		}
 	}
 	s.startedAt = time.Time{}
@@ -243,7 +251,7 @@ func (s *StartedService) CloseService() error {
 
 func (s *StartedService) SetError(err error) {
 	s.serviceAccess.Lock()
-	s.updateStatusError(err)
+	s.updateStatusError(err, false)
 	s.WriteMessage(log.LevelError, err.Error())
 }
 

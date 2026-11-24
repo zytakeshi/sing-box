@@ -5,6 +5,7 @@ package naive
 import (
 	"context"
 	"encoding/pem"
+	"errors"
 	"net"
 	"os"
 	"strings"
@@ -259,7 +260,12 @@ func (h *Outbound) InterfaceUpdated() {
 }
 
 func (h *Outbound) Close() error {
-	return h.client.Close()
+	err := h.client.Close()
+	// The client destroys a partially started engine before returning a start error.
+	if errors.Is(err, net.ErrClosed) {
+		return nil
+	}
+	return err
 }
 
 func (h *Outbound) Client() *cronet.NaiveClient {

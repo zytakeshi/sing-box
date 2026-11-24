@@ -166,7 +166,7 @@ func (m *TransportManager) Close() error {
 			monitor.Finish()
 		}
 	}
-	return nil
+	return err
 }
 
 func (m *TransportManager) Transports() []adapter.DNSTransport {

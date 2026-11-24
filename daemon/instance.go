@@ -125,6 +125,15 @@ func (i *Instance) Start() error {
 	return i.instance.Start()
 }
 
+func (i *Instance) startWithRollback() (error, error) {
+	startErr, rollbackErr := i.instance.StartWithRollback()
+	if startErr != nil {
+		i.cancel()
+		i.urlTestHistoryStorage.Close()
+	}
+	return startErr, rollbackErr
+}
+
 func (i *Instance) Close() error {
 	i.cancel()
 	i.urlTestHistoryStorage.Close()
