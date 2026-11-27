@@ -175,7 +175,7 @@ func (t *HTTPSTransport) Exchange(ctx context.Context, message *mDNS.Msg) (*mDNS
 }
 
 func (t *HTTPSTransport) exchange(ctx context.Context, message *mDNS.Msg) (*mDNS.Msg, error) {
-	exMessage := *message
+	exMessage := message.Copy()
 	exMessage.Id = 0
 	exMessage.Compress = true
 	requestBuffer := buf.NewSize(1 + message.Len())

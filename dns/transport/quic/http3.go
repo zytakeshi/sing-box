@@ -159,7 +159,7 @@ func (t *HTTP3Transport) Reset() {
 }
 
 func (t *HTTP3Transport) Exchange(ctx context.Context, message *mDNS.Msg) (*mDNS.Msg, error) {
-	exMessage := *message
+	exMessage := message.Copy()
 	exMessage.Id = 0
 	exMessage.Compress = true
 	requestBuffer := buf.NewSize(1 + message.Len())
