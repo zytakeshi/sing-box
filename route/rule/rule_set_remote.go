@@ -78,7 +78,7 @@ func (s *RemoteRuleSet) Name() string {
 }
 
 func (s *RemoteRuleSet) String() string {
-	return strings.Join(F.MapToString(s.rules), " ")
+	return strings.Join(F.MapToString(s.loadRules()), " ")
 }
 
 func (s *RemoteRuleSet) StartContext(ctx context.Context, startContext *adapter.HTTPStartContext) error {
@@ -127,9 +127,14 @@ func (s *RemoteRuleSet) Metadata() adapter.RuleSetMetadata {
 }
 
 func (s *RemoteRuleSet) ExtractIPSet() []*netipx.IPSet {
+	return common.FlatMap(s.loadRules(), extractIPSetFromRule)
+}
+
+// A reload publishes a new slice. Readers keep their snapshot during matching.
+func (s *RemoteRuleSet) loadRules() []adapter.HeadlessRule {
 	s.access.RLock()
 	defer s.access.RUnlock()
-	return common.FlatMap(s.rules, extractIPSetFromRule)
+	return s.rules
 }
 
 func (s *RemoteRuleSet) IncRef() {
@@ -144,7 +149,9 @@ func (s *RemoteRuleSet) DecRef() {
 
 func (s *RemoteRuleSet) Cleanup() {
 	if s.refs.Load() == 0 {
+		s.access.Lock()
 		s.rules = nil
+		s.access.Unlock()
 	}
 }
 
@@ -208,8 +215,8 @@ func (s *RemoteRuleSet) loopUpdate() {
 		err := s.fetch(s.ctx, nil)
 		if err != nil {
 			s.logger.Error("fetch rule-set ", s.options.Tag, ": ", err)
-		} else if s.refs.Load() == 0 {
-			s.rules = nil
+		} else {
+			s.Cleanup()
 		}
 	}
 	for {
@@ -227,8 +234,8 @@ func (s *RemoteRuleSet) updateOnce() {
 	err := s.fetch(s.ctx, nil)
 	if err != nil {
 		s.logger.Error("fetch rule-set ", s.options.Tag, ": ", err)
-	} else if s.refs.Load() == 0 {
-		s.rules = nil
+	} else {
+		s.Cleanup()
 	}
 }
 
@@ -314,7 +321,9 @@ func (s *RemoteRuleSet) fetch(ctx context.Context, startContext *adapter.HTTPSta
 }
 
 func (s *RemoteRuleSet) Close() error {
+	s.access.Lock()
 	s.rules = nil
+	s.access.Unlock()
 	s.cancel()
 	if s.updateTicker != nil {
 		s.updateTicker.Stop()
@@ -332,7 +341,7 @@ func (s *RemoteRuleSet) matchStates(metadata *adapter.InboundContext) ruleMatchS
 
 func (s *RemoteRuleSet) matchStatesWithBase(metadata *adapter.InboundContext, base ruleMatchState) ruleMatchStateSet {
 	var stateSet, definitiveStateSet ruleMatchStateSet
-	for _, rule := range s.rules {
+	for _, rule := range s.loadRules() {
 		nestedMetadata := *metadata
 		nestedMetadata.ResetRuleMatchCache()
 		stateSet = stateSet.merge(matchHeadlessRuleStatesWithBase(rule, &nestedMetadata, base))

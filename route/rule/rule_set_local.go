@@ -83,7 +83,7 @@ func (s *LocalRuleSet) Name() string {
 }
 
 func (s *LocalRuleSet) String() string {
-	return strings.Join(F.MapToString(s.rules), " ")
+	return strings.Join(F.MapToString(s.loadRules()), " ")
 }
 
 func (s *LocalRuleSet) StartContext(ctx context.Context, startContext *adapter.HTTPStartContext) error {
@@ -164,9 +164,14 @@ func (s *LocalRuleSet) Metadata() adapter.RuleSetMetadata {
 }
 
 func (s *LocalRuleSet) ExtractIPSet() []*netipx.IPSet {
+	return common.FlatMap(s.loadRules(), extractIPSetFromRule)
+}
+
+// A reload publishes a new slice. Readers keep their snapshot during matching.
+func (s *LocalRuleSet) loadRules() []adapter.HeadlessRule {
 	s.access.RLock()
 	defer s.access.RUnlock()
-	return common.FlatMap(s.rules, extractIPSetFromRule)
+	return s.rules
 }
 
 func (s *LocalRuleSet) IncRef() {
@@ -181,7 +186,9 @@ func (s *LocalRuleSet) DecRef() {
 
 func (s *LocalRuleSet) Cleanup() {
 	if s.refs.Load() == 0 {
+		s.access.Lock()
 		s.rules = nil
+		s.access.Unlock()
 	}
 }
 
@@ -198,7 +205,9 @@ func (s *LocalRuleSet) UnregisterCallback(element *list.Element[adapter.RuleSetU
 }
 
 func (s *LocalRuleSet) Close() error {
+	s.access.Lock()
 	s.rules = nil
+	s.access.Unlock()
 	return common.Close(common.PtrOrNil(s.watcher))
 }
 
@@ -212,7 +221,7 @@ func (s *LocalRuleSet) matchStates(metadata *adapter.InboundContext) ruleMatchSt
 
 func (s *LocalRuleSet) matchStatesWithBase(metadata *adapter.InboundContext, base ruleMatchState) ruleMatchStateSet {
 	var stateSet, definitiveStateSet ruleMatchStateSet
-	for _, rule := range s.rules {
+	for _, rule := range s.loadRules() {
 		nestedMetadata := *metadata
 		nestedMetadata.ResetRuleMatchCache()
 		stateSet = stateSet.merge(matchHeadlessRuleStatesWithBase(rule, &nestedMetadata, base))
