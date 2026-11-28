@@ -420,22 +420,28 @@ func (s *Box) PreStart() error {
 }
 
 func (s *Box) Start() error {
-	err := s.start()
-	if err != nil {
-		// TODO: remove catch error
+	err, _ := s.StartWithRollback()
+	return err
+}
+
+// StartWithRollback returns the startup error and the result of rolling back
+// a partial start. The two errors are separate so callers can retain the
+// original failure and decide whether another start is safe.
+func (s *Box) StartWithRollback() (startErr error, rollbackErr error) {
+	startErr = s.start()
+	if startErr != nil {
 		defer func() {
 			v := recover()
 			if v != nil {
-				println(err.Error())
 				debug.PrintStack()
-				println("panic on early start: " + fmt.Sprint(v))
+				rollbackErr = fmt.Errorf("panic during startup rollback: %v", v)
 			}
 		}()
-		s.Close()
-		return err
+		rollbackErr = s.Close()
+		return
 	}
 	s.logger.Info("sing-box started (", F.Seconds(time.Since(s.createdAt).Seconds()), "s)")
-	return nil
+	return nil, nil
 }
 
 func (s *Box) preStart() error {
